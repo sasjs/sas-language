@@ -39,18 +39,15 @@ const after = new Map(current.groups.map((g) => [g.group, g]))
 
 const lines = ['## Refresh', '']
 
-if (previous.upstreamRef === current.upstreamRef) {
-  lines.push(
-    `Upstream commit is unchanged (\`${current.upstreamRef}\`) - the regenerated data differs.`,
-    ''
-  )
-} else {
+if (previous.upstreamRef !== current.upstreamRef) {
   lines.push(
     `Upstream: \`${previous.upstreamRef}\` -> \`${current.upstreamRef}\``,
     '',
     `https://github.com/sassoftware/vscode-sas-extension/compare/${previous.upstreamRef}...${current.upstreamRef}`,
     ''
   )
+} else {
+  lines.push(`Upstream commit is unchanged (\`${current.upstreamRef}\`).`, '')
 }
 
 const changed = []
