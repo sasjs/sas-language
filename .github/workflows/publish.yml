@@ -20,20 +20,8 @@ jobs:
       pull-requests: write # lets @semantic-release/github comment on pull requests
 
     steps:
-      # A short-lived App token, because the release commit and tag have to be
-      # pushed back to main and the default GITHUB_TOKEN cannot trigger further
-      # workflows.
-      - name: Generate token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - uses: actions/checkout@v4
         with:
-          token: ${{ steps.app-token.outputs.token }}
-          persist-credentials: true
           fetch-depth: 0 # semantic-release needs the full history and the tags
 
       - uses: actions/setup-node@v4
@@ -85,7 +73,7 @@ jobs:
       - name: Semantic release
         run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # semantic-release only releases when the commits since the last tag call
       # for one, so on every other push to main the version is already published.
@@ -98,6 +86,16 @@ jobs:
           if npm view "@sasjs/sas-language@${version}" version > /dev/null 2>&1; then
             echo "@sasjs/sas-language@${version} is already published; nothing to do"
             exit 0
+          fi
+
+          # dist/ is not committed, and .npmrc sets ignore-scripts=true so the
+          # prepack build does not run here. Build explicitly rather than
+          # relying on an earlier step happening to leave dist/ on disk.
+          npm run build
+
+          if [ ! -f dist/index.js ]; then
+            echo "dist/index.js is missing - refusing to publish a package with no compiled API"
+            exit 1
           fi
 
           echo "publishing @sasjs/sas-language@${version}"

@@ -137,13 +137,17 @@ last tag, bumps the version, tags the release and writes the release notes.
 Publishing is a separate step, and it uses the npm trusted publisher, so no token
 is stored anywhere.
 
-Setup, once:
+Setup, once: on npmjs.com, add a trusted publisher for `@sasjs/sas-language` -
+repository `sasjs/sas-language`, workflow `publish.yml`, environment blank.
 
-1. On npmjs.com, add a trusted publisher for `@sasjs/sas-language`: repository
-   `sasjs/sas-language`, workflow `publish.yml`, environment blank.
-2. Make sure `APP_ID` and `APP_PRIVATE_KEY` are available to this repository.
-   The release commit and tag are pushed with an App token, because the default
-   `GITHUB_TOKEN` cannot trigger further workflows.
+semantic-release is configured **not** to push to `main`: `@semantic-release/git`
+is deliberately absent, so the version commit is never made and nothing needs to
+bypass branch protection. The release notes and the semantic versioning are
+unaffected - `@semantic-release/github` still publishes the grouped notes as the
+release body, and `@semantic-release/commit-analyzer` still maps `fix:` to a
+patch, `feat:` to a minor and a breaking change to a major. The one consequence
+is that `package.json` on `main` keeps the last committed version rather than the
+released one.
 
 Which commits cut a release follows the usual convention: `fix:` and `feat:` on
 `main` do, `chore:` and `ci:` do not. The refresh workflow opens a pull request,
