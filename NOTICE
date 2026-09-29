@@ -1,17 +1,35 @@
 @sasjs/sas-language
 Copyright (c) 2026 SASjs
 
-The generated data in data/ and provenance.json is derived from the SAS extension
-for Visual Studio Code:
+This package contains two things from the SAS extension for Visual Studio Code:
 
     https://github.com/sassoftware/vscode-sas-extension
     Copyright (c) SAS Institute Inc.
     Licensed under the Apache License, Version 2.0
     https://www.apache.org/licenses/LICENSE-2.0
 
-The files consumed are the keyword and help data under server/data/. They are
-transformed into the shapes described in README.md; no upstream source code is
-copied. provenance.json records the upstream commit each published data set came
-from.
+1. The generated data in data/ is derived from the keyword and help data under
+   server/data/. It is transformed into the shapes described in README.md; no
+   upstream source code is copied into it. provenance.json records the upstream
+   commit each published data set came from.
+
+2. The language server in server/ is the upstream server compiled from source at
+   that same commit, because upstream publishes no built artifact: its dist/ is
+   ignored and it has no release assets. The build is reproducible in content but
+   not byte for byte, as the upstream typeshed loader inlines the Python stubs in
+   filesystem order rather than sorting them.
+
+The compiled server carries further components under their own licences, and
+requires their notices to travel with it:
+
+    pyright-internal (pyright)   MIT             Copyright (c) Microsoft Corporation
+    typeshed                     Apache-2.0      https://github.com/python/typeshed
+    buffer                       MIT             Copyright (c) Feross Aboukhadijeh
+    ieee754                      BSD-3-Clause    Copyright (c) Feross Aboukhadijeh
+
+The licence texts are staged alongside the artifact in server/ as LICENSE.txt
+(the extension), LICENSE.typeshed.txt, LICENSE.pyright.txt and
+LICENSE.server.js.txt. The bundled licences are also reproduced in the artifact
+itself, in the banner webpack writes into server.js.
 
 The package source is licensed under the MIT License; see LICENSE.
