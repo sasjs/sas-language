@@ -1,0 +1,160 @@
+{
+  "source": "https://github.com/sassoftware/vscode-sas-extension",
+  "ref": "c6092de6cae08fd3f2ab5db543549c9f5685c27c",
+  "groups": [
+    {
+      "group": "statements",
+      "label": "SAS statement",
+      "kind": 17,
+      "count": 107,
+      "documented": 107
+    },
+    {
+      "group": "procNames",
+      "label": "SAS procedure",
+      "kind": 17,
+      "count": 386,
+      "documented": 386
+    },
+    {
+      "group": "functions",
+      "label": "SAS function",
+      "kind": 1,
+      "count": 642,
+      "documented": 642
+    },
+    {
+      "group": "callRoutines",
+      "label": "SAS call routine",
+      "kind": 1,
+      "count": 107,
+      "documented": 107
+    },
+    {
+      "group": "macroStatements",
+      "label": "SAS macro statement",
+      "kind": 17,
+      "count": 32,
+      "documented": 32
+    },
+    {
+      "group": "macroFunctions",
+      "label": "SAS macro function",
+      "kind": 1,
+      "count": 65,
+      "documented": 65
+    },
+    {
+      "group": "formats",
+      "label": "SAS format",
+      "kind": 21,
+      "count": 278,
+      "documented": 278
+    },
+    {
+      "group": "informats",
+      "label": "SAS informat",
+      "kind": 21,
+      "count": 171,
+      "documented": 171
+    },
+    {
+      "group": "options",
+      "label": "SAS data set option",
+      "kind": 17,
+      "count": 82,
+      "documented": 82
+    },
+    {
+      "group": "systemOptions",
+      "label": "SAS system option",
+      "kind": 17,
+      "count": 378,
+      "documented": 378
+    },
+    {
+      "group": "odsTagsets",
+      "label": "ODS destination",
+      "kind": 17,
+      "count": 34,
+      "documented": 34
+    },
+    {
+      "group": "styleElements",
+      "label": "SAS style element",
+      "kind": 17,
+      "count": 172,
+      "documented": 172
+    },
+    {
+      "group": "styleAttributes",
+      "label": "SAS style attribute",
+      "kind": 17,
+      "count": 103,
+      "documented": 103
+    },
+    {
+      "group": "styleLocations",
+      "label": "SAS style location",
+      "kind": 17,
+      "count": 33,
+      "documented": 33
+    },
+    {
+      "group": "sqlKeywords",
+      "label": "PROC SQL keyword",
+      "kind": 17,
+      "count": 41,
+      "documented": 41
+    },
+    {
+      "group": "whereOperators",
+      "label": "WHERE operator",
+      "kind": 17,
+      "count": 9,
+      "documented": 9
+    },
+    {
+      "group": "automaticVariables",
+      "label": "SAS automatic variable",
+      "kind": 6,
+      "count": 60,
+      "documented": 60
+    },
+    {
+      "group": "macroDefinitionOptions",
+      "label": "SAS macro definition option",
+      "kind": 17,
+      "count": 12,
+      "documented": 12
+    },
+    {
+      "group": "hashMethods",
+      "label": "SAS hash method",
+      "kind": 25,
+      "count": 19,
+      "documented": 19
+    },
+    {
+      "group": "statisticsKeywords",
+      "label": "SAS statistics keyword",
+      "kind": 17,
+      "count": 43,
+      "documented": 43
+    },
+    {
+      "group": "ds2Keywords",
+      "label": "DS2 keyword",
+      "kind": 17,
+      "count": 21,
+      "documented": 21
+    },
+    {
+      "group": "ds2Functions",
+      "label": "DS2 function",
+      "kind": 1,
+      "count": 136,
+      "documented": 136
+    }
+  ]
+}

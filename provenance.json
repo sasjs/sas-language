@@ -1,0 +1,322 @@
+{
+  "source": "https://github.com/sassoftware/vscode-sas-extension",
+  "license": "Apache-2.0",
+  "upstreamRef": "c6092de6cae08fd3f2ab5db543549c9f5685c27c",
+  "generatedBy": "scripts/build.mjs",
+  "groups": [
+    {
+      "group": "statements",
+      "label": "SAS statement",
+      "kind": 17,
+      "files": [
+        "SASGlobalStatements.json",
+        "SASGlobalProcedureStatements.json",
+        "SASDataStepStatements.json"
+      ],
+      "count": 107,
+      "documented": 107,
+      "indexBytes": 3623,
+      "docsBytes": 26477,
+      "indexSha256": "865aab8a8d50f442f5ec33bb9c669d8ee583bde128e6b5dfdafa6086872e2bf1",
+      "docsSha256": "7d13bc2fbf2f425cb62ba7be1d7647a64bffe28a08bcf2a360af9dfb8a767565"
+    },
+    {
+      "group": "procNames",
+      "label": "SAS procedure",
+      "kind": 17,
+      "files": [
+        "SASProcedures.json"
+      ],
+      "count": 386,
+      "documented": 386,
+      "indexBytes": 10859,
+      "docsBytes": 328370,
+      "indexSha256": "982d669b1ad953012d3426de51030f02d600a779681ba9763963c6a91e04ad08",
+      "docsSha256": "8f1a52b1c1a1132909b46ee931cfd3e76b9cf0eba367475727814c1260bc3654"
+    },
+    {
+      "group": "functions",
+      "label": "SAS function",
+      "kind": 1,
+      "files": [
+        "SASFunctions.json"
+      ],
+      "count": 642,
+      "documented": 642,
+      "indexBytes": 17390,
+      "docsBytes": 133343,
+      "indexSha256": "c404b57f07ecc863c2af00aa832c89c877c0f2257abd5edbe4714f4ae71b51fd",
+      "docsSha256": "23c62e5b8b2b2e94ea4204cbafe51ba72ec7eabe98d412aa70b9006509904c9b"
+    },
+    {
+      "group": "callRoutines",
+      "label": "SAS call routine",
+      "kind": 1,
+      "files": [
+        "SASCallRoutines.json"
+      ],
+      "count": 107,
+      "documented": 107,
+      "indexBytes": 3155,
+      "docsBytes": 22001,
+      "indexSha256": "4dd2144fc453f1d63196b0d837ed3846d980360d05b14b12c98a324bd07c4b84",
+      "docsSha256": "c921134f4af5093f74574860a584d6f3307c4a7db4a50dd67760ed3e139d7c29"
+    },
+    {
+      "group": "macroStatements",
+      "label": "SAS macro statement",
+      "kind": 17,
+      "files": [
+        "SASMacroStatements.json"
+      ],
+      "count": 32,
+      "documented": 32,
+      "indexBytes": 1046,
+      "docsBytes": 7622,
+      "indexSha256": "76b55f8486d38e69e376f2cc8a03b4ee69ede2cc780a76ecf936cef63af68155",
+      "docsSha256": "51f3282c9c5bfdcb04347f1ef8c9fa8cb4c2df42f827315eabadcbe96e4b6ba5"
+    },
+    {
+      "group": "macroFunctions",
+      "label": "SAS macro function",
+      "kind": 1,
+      "files": [
+        "SASMacroFunctions.json",
+        "SASAutocallMacros.json",
+        "SASARMMacros.json"
+      ],
+      "count": 65,
+      "documented": 65,
+      "indexBytes": 1957,
+      "docsBytes": 22559,
+      "indexSha256": "3703fd62cc040563b6e1359f0548985b10fcba2ddbb365bc2acabadb9d4a6c9b",
+      "docsSha256": "035dbbe823e8d5266e8502765a54dfa941637632b48c9a0f194c19b84a958432"
+    },
+    {
+      "group": "formats",
+      "label": "SAS format",
+      "kind": 21,
+      "files": [
+        "SASFormats.json"
+      ],
+      "count": 278,
+      "documented": 278,
+      "indexBytes": 7845,
+      "docsBytes": 162526,
+      "indexSha256": "6f677793ab759582bc96d57aba138711e5e8d2cf787f15d28ffbc48db1a36acf",
+      "docsSha256": "f3239024a08ab16d406069350da795bb565a03cc59dd9c20d0a64dbf1dca043d"
+    },
+    {
+      "group": "informats",
+      "label": "SAS informat",
+      "kind": 21,
+      "files": [
+        "SASInformats.json"
+      ],
+      "count": 171,
+      "documented": 171,
+      "indexBytes": 4948,
+      "docsBytes": 143429,
+      "indexSha256": "5fbc8d41acfa33214eae8b48ac7eaf1b306392bee852776a9ababad751f6f6ec",
+      "docsSha256": "90132a6e5507ca8e77d9162ec32906404cb4c302d4f9918a43dfa728e9e66b28"
+    },
+    {
+      "group": "options",
+      "label": "SAS data set option",
+      "kind": 17,
+      "files": [
+        "SASDataStepOptions.json",
+        "SASDataSetOptions.json",
+        "SASDataStepOptions2.json"
+      ],
+      "count": 82,
+      "documented": 82,
+      "indexBytes": 2773,
+      "docsBytes": 45473,
+      "indexSha256": "a093be8f492178793a77deb0943902aad1940adcfdf03bd0cd84a29bc8a2e8d4",
+      "docsSha256": "398b182947892968061557d92ad7d55dc7c1fcf1cbd7761b43c3731c80156680"
+    },
+    {
+      "group": "systemOptions",
+      "label": "SAS system option",
+      "kind": 17,
+      "files": [
+        "Statements/OPTIONS.json"
+      ],
+      "count": 378,
+      "documented": 378,
+      "indexBytes": 7496,
+      "docsBytes": 143555,
+      "indexSha256": "5d11ff0d7f501842c8379db56e3cf33098af71a7a6538775bb553b519f06057a",
+      "docsSha256": "4eb55f82893babaefaa8d8811c632d44b463bd91f5be21b8a382b98eab132b8c"
+    },
+    {
+      "group": "odsTagsets",
+      "label": "ODS destination",
+      "kind": 17,
+      "files": [
+        "ODS_Tagsets.json"
+      ],
+      "count": 34,
+      "documented": 34,
+      "indexBytes": 638,
+      "docsBytes": 4423,
+      "indexSha256": "263f070f80062637c27eb6095230c163be30b31cf8c748798f9e29e25b8d747a",
+      "docsSha256": "37fa714a76da25181919974d9cd042c816f3dacd6ab4d99ef51ad7021522475e"
+    },
+    {
+      "group": "styleElements",
+      "label": "SAS style element",
+      "kind": 17,
+      "files": [
+        "StyleElements.json"
+      ],
+      "count": 172,
+      "documented": 172,
+      "indexBytes": 3767,
+      "docsBytes": 12936,
+      "indexSha256": "8de882dbc8cc9e1415a14234b1183d9201a7d32d245a0b65f410e64956151163",
+      "docsSha256": "04575be3a5edb85768a780c1c663d06de82079e3da1373c4899c4cd3261d03bb"
+    },
+    {
+      "group": "styleAttributes",
+      "label": "SAS style attribute",
+      "kind": 17,
+      "files": [
+        "StyleAttributes.json"
+      ],
+      "count": 103,
+      "documented": 103,
+      "indexBytes": 2376,
+      "docsBytes": 32328,
+      "indexSha256": "59dd69aa41df8ccd3f07ec9442e6f7d4ab3de79a915cead3a8d0699757aef0d4",
+      "docsSha256": "0d6cbf842cc59d8a444ffaa1266a64bc355776db3d5c816188c8ad9e8e0a2415"
+    },
+    {
+      "group": "styleLocations",
+      "label": "SAS style location",
+      "kind": 17,
+      "files": [
+        "StyleLocations.json"
+      ],
+      "count": 33,
+      "documented": 33,
+      "indexBytes": 581,
+      "docsBytes": 2793,
+      "indexSha256": "5cc4d2b4e82f0ba605c19baf78b63db618d8653eb43d776f7223fbeb068fabbc",
+      "docsSha256": "7564a4c314adfe44a4cec2e7d857d0ef8d1275266e4ffa0dd62a9be888143f2b"
+    },
+    {
+      "group": "sqlKeywords",
+      "label": "PROC SQL keyword",
+      "kind": 17,
+      "files": [
+        "SQLKeywords.json"
+      ],
+      "count": 41,
+      "documented": 41,
+      "indexBytes": 1070,
+      "docsBytes": 7035,
+      "indexSha256": "629e85e4309604485094037019402ba8c97932cf0bfe68de9917a52b4264086b",
+      "docsSha256": "c73ac8e5d9c2275af10f851535a72445572e5be51ab76ecf13a8a9ad70a42fd1"
+    },
+    {
+      "group": "whereOperators",
+      "label": "WHERE operator",
+      "kind": 17,
+      "files": [
+        "WHERE.json"
+      ],
+      "count": 9,
+      "documented": 9,
+      "indexBytes": 221,
+      "docsBytes": 669,
+      "indexSha256": "4d615b19b01c5dc363b1c09674f6f2555d640811e6da011ecf72fd48974a5ea2",
+      "docsSha256": "9a56cca56e09599cf324c6713d98d0520c4f0947cf68d77f2468abc8b22a3dc7"
+    },
+    {
+      "group": "automaticVariables",
+      "label": "SAS automatic variable",
+      "kind": 6,
+      "files": [
+        "SASAutoVariables.json"
+      ],
+      "count": 60,
+      "documented": 60,
+      "indexBytes": 2234,
+      "docsBytes": 5391,
+      "indexSha256": "14b01f7ddaf20a40e048c224998b9eff46ffa19135e7056b79b05d0a7b0592eb",
+      "docsSha256": "1c755ad0c0a3b1eb7a262da2542d698b0e6fc0bc68864e1e27fa1ea8e851442b"
+    },
+    {
+      "group": "macroDefinitionOptions",
+      "label": "SAS macro definition option",
+      "kind": 17,
+      "files": [
+        "MacroDefinitionOptions.json"
+      ],
+      "count": 12,
+      "documented": 12,
+      "indexBytes": 566,
+      "docsBytes": 2182,
+      "indexSha256": "117c051c997b1dbd08642878ca420742952ccb90c57fdc783051f762c4362852",
+      "docsSha256": "100ab26eec7c8da2b2fa79c9313bf21a208590eb10ef636f60fc4aa88c594911"
+    },
+    {
+      "group": "hashMethods",
+      "label": "SAS hash method",
+      "kind": 25,
+      "files": [
+        "HashPackageMethods.json"
+      ],
+      "count": 19,
+      "documented": 19,
+      "indexBytes": 625,
+      "docsBytes": 16944,
+      "indexSha256": "7d75aacddd68fe6e73cada7c8a386d44da558ed7d8f7df03f76d07d8ed04ac8c",
+      "docsSha256": "a9061e9a26af80040ac4311d0298b744a78df81eb258c04193559ae588094dd5"
+    },
+    {
+      "group": "statisticsKeywords",
+      "label": "SAS statistics keyword",
+      "kind": 17,
+      "files": [
+        "StatisticsKeywords.json"
+      ],
+      "count": 43,
+      "documented": 43,
+      "indexBytes": 687,
+      "docsBytes": 3095,
+      "indexSha256": "ea27a33cadf0dcc59efb5720adce69d71532b50b2299e5facb5a0b7a47174259",
+      "docsSha256": "e309b30dcf01cbf5d219318ca9df417b2af4f042514047790e6d47c6876b90e8"
+    },
+    {
+      "group": "ds2Keywords",
+      "label": "DS2 keyword",
+      "kind": 17,
+      "files": [
+        "DS2Keywords.json"
+      ],
+      "count": 21,
+      "documented": 21,
+      "indexBytes": 675,
+      "docsBytes": 20404,
+      "indexSha256": "a2ba14686642b88bf2f4b0d74122e57cebf6e2b4a6d5a9e8050587b388f5b3fe",
+      "docsSha256": "bdb938c1f5e57c68abe2c67fdc6ab4b641ab867681bc8eac15ceac14098e63c1"
+    },
+    {
+      "group": "ds2Functions",
+      "label": "DS2 function",
+      "kind": 1,
+      "files": [
+        "DS2Functions.json"
+      ],
+      "count": 136,
+      "documented": 136,
+      "indexBytes": 3517,
+      "docsBytes": 97001,
+      "indexSha256": "60d1f9c22701bc6592f479bddd58b16d74a3414af647c356656ab7572c4a15a7",
+      "docsSha256": "fedfd64fbc8c722ce3cff809878e95e0cbb615a623e84131fe8743c69dcf16d5"
+    }
+  ]
+}

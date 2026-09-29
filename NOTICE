@@ -1,0 +1,17 @@
+@sasjs/language-data
+Copyright (c) 2026 SASjs
+
+The generated data in data/ and provenance.json is derived from the SAS extension
+for Visual Studio Code:
+
+    https://github.com/sassoftware/vscode-sas-extension
+    Copyright (c) SAS Institute Inc.
+    Licensed under the Apache License, Version 2.0
+    https://www.apache.org/licenses/LICENSE-2.0
+
+The files consumed are the keyword and help data under server/data/. They are
+transformed into the shapes described in README.md; no upstream source code is
+copied. provenance.json records the upstream commit each published data set came
+from.
+
+The package source is licensed under the MIT License; see LICENSE.

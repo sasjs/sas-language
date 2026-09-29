@@ -1,0 +1,9 @@
+# Generated files are canonical as the build writes them, so that a fresh build
+# always reproduces the committed bytes (the CI sync check depends on this).
+# The data is also huge, and formatting it would obscure the refresh diff.
+data/
+provenance.json
+src/groups.generated.ts
+dist/
+.upstream/
+package-lock.json

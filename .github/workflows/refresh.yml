@@ -1,0 +1,76 @@
+name: Refresh upstream data
+
+# Reloads the SAS vocabulary from the SAS extension for VS Code and opens a pull
+# request when anything changed, so an upstream change is reviewed rather than
+# absorbed silently.
+on:
+  schedule:
+    # Mondays at 04:17 UTC. The odd minute avoids the top-of-hour queue.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # Resolves the latest upstream commit, so a refresh picks up whatever has
+      # landed since the last one.
+      - name: Fetch the latest upstream data
+        run: npm run fetch
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Summarise the change
+        id: summary
+        run: |
+          node scripts/summarise-refresh.mjs > /tmp/refresh-body.md
+          cat /tmp/refresh-body.md
+
+      - name: Detect a change
+        id: diff
+        run: |
+          if [ -z "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ref="$(node -p "require('./provenance.json').upstreamRef")"
+          branch="refresh/upstream-$(date -u +%Y%m%d)"
+
+          git config user.name "sasjs"
+          git config user.email "sasjs@4gl.io"
+          git checkout -b "$branch"
+          git add data provenance.json src/groups.generated.ts
+          git commit -m "chore: refresh SAS language data from upstream ${ref:0:10}"
+          git push --set-upstream origin "$branch"
+
+          gh pr create \
+            --title "Refresh SAS language data from upstream ${ref:0:10}" \
+            --body-file /tmp/refresh-body.md \
+            --base main \
+            --head "$branch"
+
+      - name: Report no change
+        if: steps.diff.outputs.changed == 'false'
+        run: echo "Upstream data is unchanged; nothing to refresh."

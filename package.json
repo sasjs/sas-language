@@ -1,0 +1,52 @@
+{
+  "name": "@sasjs/language-data",
+  "version": "0.1.0",
+  "description": "SAS language data for editors: completions, hover documentation and signatures, resolved from the SAS extension for VS Code",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./groups": {
+      "types": "./dist/groups.d.ts",
+      "default": "./dist/groups.js"
+    },
+    "./data/*": "./data/*",
+    "./provenance.json": "./provenance.json"
+  },
+  "files": [
+    "dist",
+    "data",
+    "provenance.json",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "fetch": "node ./scripts/fetch-upstream.mjs",
+    "build:data": "node ./scripts/build.mjs",
+    "build:ts": "tsc -p ./tsconfig.json",
+    "build": "npm run build:data && npm run build:ts",
+    "refresh": "npm run fetch && npm run build:data",
+    "test": "node --test ./test/*.test.mjs",
+    "lint": "prettier --check .",
+    "lint:fix": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "sas",
+    "language",
+    "completions",
+    "hover",
+    "monaco"
+  ]
+}

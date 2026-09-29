@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Fetch the pinned upstream data
+        run: npm run fetch -- --ref "$(node -p "require('./provenance.json').upstreamRef")"
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # The committed data must be exactly what the committed provenance and a
+      # fresh build produce, so a hand edit or a stale .upstream/ cannot pass.
+      - name: Data is in sync with provenance
+        run: |
+          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
+            echo "data/, provenance.json or src/groups.generated.ts differ from a fresh build:"
+            git --no-pager diff --stat data provenance.json src/groups.generated.ts
+            echo "Run 'npm run refresh' and commit the result."
+            exit 1
+          fi
