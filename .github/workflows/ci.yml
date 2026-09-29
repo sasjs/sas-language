@@ -13,9 +13,31 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
-      - run: npm ci
+      - name: Install dependencies
+        # --ignore-scripts: no install script from any dependency runs. The
+        # gitleaks binary below is a plain devDependency binary and needs no
+        # postinstall.
+        run: npm ci --ignore-scripts
+
+      - name: Scan for secrets (gitleaks)
+        # The local pre-commit hook is best-effort, and is suppressed entirely
+        # where .npmrc sets ignore-scripts=true, so CI is the enforcement point:
+        # a leaked credential must fail the build, not just a commit. Same
+        # @nogoo9/gitleaks binary the hook pins - gitleaks-action needs a
+        # licence key for organisation repos.
+        run: node_modules/.bin/gitleaks detect --source . --redact --no-banner -v
+
+      - name: Audit the shipped dependencies
+        # Nothing here ships to a consumer, so this must always be clean.
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Audit every dependency, dev included
+        # Fails on any advisory outside the two documented exemptions, which
+        # live inside the npm package that @semantic-release/npm bundles and
+        # cannot be reached from here. See scripts/audit.mjs.
+        run: npm run audit
 
       - name: Lint
         run: npm run lint

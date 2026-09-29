@@ -117,6 +117,18 @@ not degrade somebody's editor.
     npm run build     # transform into data/ and compile
     npm test          # validate the data and the transforms
 
+## Repository hardening
+
+`.npmrc` installs without running lifecycle scripts, writes exact versions, enforces the `engines` field, and keeps the lockfile honest.
+
+`.git-hooks/` carries the org's checks: a `pre-commit` that scans the staged diff with gitleaks and refuses a commit over 2MB, and a `commit-msg` that enforces Conventional Commits. `npm run prepare` wires them up, but `.npmrc` sets `ignore-scripts=true`, which suppresses it - so after a fresh clone:
+
+```
+git config core.hooksPath ./.git-hooks
+```
+
+A hook is best-effort, so CI enforces the same things from the other side: a full-history `gitleaks detect`, `npm audit --omit=dev --audit-level=low` for the shipped surface, and `npm run audit` for everything else, dev dependencies included. That last one fails on any advisory outside two documented exemptions - see `scripts/audit.mjs` - so a new advisory anywhere else cannot land quietly.
+
 ## Releasing
 
 `.github/workflows/publish.yml` publishes on every push to `main`.

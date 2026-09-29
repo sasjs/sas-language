@@ -1,0 +1,10 @@
+# Documented false positives for gitleaks.
+#
+# The pre-commit hook runs `gitleaks protect --staged`, which only sees staged
+# changes. A full-history scan (`gitleaks detect`) needs an entry here for any
+# finding in a commit that is already pushed. Format:
+#
+#   <commit>:<path>:<rule>:<line>
+#
+# Keep this file empty of real secrets: an entry exempts a line from the scan,
+# so it is only ever for values that are provably not credentials.

@@ -67,17 +67,20 @@
     "build:ts": "tsc -p ./tsconfig.json",
     "build": "npm run build:data && npm run build:ts",
     "refresh": "npm run fetch && npm run build:data",
-    "prepare": "npm run build:ts",
+    "audit": "node ./scripts/audit.mjs",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath ./.git-hooks",
+    "prepack": "npm run build:ts",
     "test": "node --test ./test/*.test.mjs",
     "lint": "prettier --check .",
     "lint:fix": "prettier --write ."
   },
   "devDependencies": {
+    "@nogoo9/gitleaks": "8.30.1-post.2",
     "@semantic-release/exec": "7.1.0",
     "@semantic-release/git": "11.0.1",
-    "prettier": "^3.9.0",
+    "prettier": "3.9.9",
     "semantic-release": "25.0.9",
-    "typescript": "^5.6.0"
+    "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=20"
