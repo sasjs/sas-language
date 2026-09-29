@@ -116,6 +116,31 @@ not degrade somebody's editor.
     npm run build     # transform into data/ and compile
     npm test          # validate the data and the transforms
 
+## Releasing
+
+`.github/workflows/publish.yml` publishes on every push to `main`.
+
+Versioning is semantic-release's job: it reads the conventional commits since the
+last tag, bumps the version, tags the release and writes the release notes.
+Publishing is a separate step, and it uses the npm trusted publisher, so no token
+is stored anywhere.
+
+Setup, once:
+
+1. On npmjs.com, add a trusted publisher for `@sasjs/sas-language`: repository
+   `sasjs/sas-language`, workflow `publish.yml`, environment blank.
+2. Make sure `APP_ID` and `APP_PRIVATE_KEY` are available to this repository.
+   The release commit and tag are pushed with an App token, because the default
+   `GITHUB_TOKEN` cannot trigger further workflows.
+
+Which commits cut a release follows the usual convention: `fix:` and `feat:` on
+`main` do, `chore:` and `ci:` do not. The refresh workflow opens a pull request,
+so merging it with a `fix:` or `feat:` subject is what cuts the next release.
+
+The publish step asks the registry first, so a push that produces no release
+reports that the version is already published and stays green, rather than
+failing with E403.
+
 ## Licence
 
 The package is MIT. The data is derived from the SAS extension for Visual Studio

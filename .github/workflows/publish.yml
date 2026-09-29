@@ -1,0 +1,90 @@
+name: Publish
+
+# Publishes @sasjs/sas-language to npm. Versioning is semantic-release's job: it
+# reads the conventional commits on main, bumps the version, tags the release and
+# writes the GitHub release. Publishing is a separate step, because it uses the
+# npm trusted publisher rather than a token.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # semantic-release pushes the version commit and the tag
+      id-token: write # npm provenance, through the trusted publisher
+      issues: write # lets @semantic-release/github comment on issues
+      pull-requests: write # lets @semantic-release/github comment on pull requests
+
+    steps:
+      # A short-lived App token, because the release commit and tag have to be
+      # pushed back to main and the default GITHUB_TOKEN cannot trigger further
+      # workflows.
+      - name: Generate token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+          fetch-depth: 0 # semantic-release needs the full history and the tags
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Node 22 ships npm 10.x, and the trusted publisher needs npm >= 11.5.1.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Publishing data that does not match the repository would be worse than
+      # publishing nothing, so the refresh is replayed and the result compared
+      # before any of this reaches npm.
+      - name: Data and build output are in sync
+        run: |
+          npm run fetch -- --ref "$(node -p "require('./provenance.json').upstreamRef")"
+          npm run build
+          if [ -n "$(git status --porcelain data dist provenance.json src/groups.generated.ts)" ]; then
+            echo "the committed data or build output differs from a fresh build:"
+            git --no-pager diff --stat data dist provenance.json src/groups.generated.ts
+            echo "Run 'npm run refresh && npm run build' and commit the result."
+            exit 1
+          fi
+
+      - name: Semantic release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      # semantic-release only releases when the commits since the last tag call
+      # for one, so on every other push to main the version is already published.
+      # Checking the registry first keeps those runs green instead of failing
+      # with E403, which is what an unconditional publish would do.
+      - name: Publish to npm with the trusted publisher
+        run: |
+          version=$(node -p "require('./package.json').version")
+
+          if npm view "@sasjs/sas-language@${version}" version > /dev/null 2>&1; then
+            echo "@sasjs/sas-language@${version} is already published; nothing to do"
+            exit 0
+          fi
+
+          echo "publishing @sasjs/sas-language@${version}"
+          npm publish --access public
