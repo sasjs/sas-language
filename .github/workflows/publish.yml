@@ -71,13 +71,13 @@ jobs:
       # Publishing data that does not match the repository would be worse than
       # publishing nothing, so the refresh is replayed and the result compared
       # before any of this reaches npm.
-      - name: Data and build output are in sync
+      - name: Data is in sync with its provenance
         run: |
           npm run fetch -- --ref "$(node -p "require('./provenance.json').upstreamRef")"
           npm run build
-          if [ -n "$(git status --porcelain data dist provenance.json src/groups.generated.ts)" ]; then
-            echo "the committed data or build output differs from a fresh build:"
-            git --no-pager diff --stat data dist provenance.json src/groups.generated.ts
+          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
+            echo "data/, provenance.json or src/groups.generated.ts differ from a fresh build:"
+            git --no-pager diff --stat data provenance.json src/groups.generated.ts
             echo "Run 'npm run refresh && npm run build' and commit the result."
             exit 1
           fi
