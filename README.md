@@ -21,6 +21,18 @@ something cheap to load, and keep it current with a scheduled job.
 npm install @sasjs/sas-language
 ```
 
+Until the package is on the registry it can be taken from git, pinned to a
+commit:
+
+```
+npm install git+https://github.com/sasjs/sas-language.git#<commit>
+```
+
+That works because `dist/` is committed, not built on install. It has to be: a
+consumer that sets `ignore-scripts=true` - as sasjs/server does - never runs the
+package's `prepare` script, so a git install would otherwise arrive with no
+compiled API at all.
+
 ## Use
 
 The data is split so that a completion provider loads something small and hover

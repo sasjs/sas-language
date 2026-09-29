@@ -25,6 +25,13 @@
     "README.md"
   ],
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sasjs/sas-language.git"
+  },
   "scripts": {
     "fetch": "node ./scripts/fetch-upstream.mjs",
     "build:data": "node ./scripts/build.mjs",

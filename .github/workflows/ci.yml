@@ -29,13 +29,16 @@ jobs:
       - name: Test
         run: npm test
 
-      # The committed data must be exactly what the committed provenance and a
-      # fresh build produce, so a hand edit or a stale .upstream/ cannot pass.
-      - name: Data is in sync with provenance
+      # The committed data and build output must be exactly what the committed
+      # provenance and a fresh build produce, so a hand edit, a stale
+      # .upstream/, or a dist/ that no longer matches its source cannot pass.
+      # dist/ is committed because a consumer with ignore-scripts=true cannot
+      # build it on install.
+      - name: Data and build output are in sync
         run: |
-          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
-            echo "data/, provenance.json or src/groups.generated.ts differ from a fresh build:"
-            git --no-pager diff --stat data provenance.json src/groups.generated.ts
-            echo "Run 'npm run refresh' and commit the result."
+          if [ -n "$(git status --porcelain data dist provenance.json src/groups.generated.ts)" ]; then
+            echo "data/, dist/, provenance.json or src/groups.generated.ts differ from a fresh build:"
+            git --no-pager diff --stat data dist provenance.json src/groups.generated.ts
+            echo "Run 'npm run refresh && npm run build' and commit the result."
             exit 1
           fi
