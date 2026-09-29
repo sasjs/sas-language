@@ -30,8 +30,13 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       # Node 22 ships npm 10.x, and the trusted publisher needs npm >= 11.5.1.
+      # The major is pinned rather than tracking @latest, so a release does not
+      # adopt a new npm major on its own: npm 12 parses `npm run <script> --flag`
+      # differently, and a release is the worst place to find that out. The
+      # upstream build works on both majors, so this is a hedge rather than a
+      # requirement - see patchSubBuildDispatch in scripts/build-server.mjs.
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@^11
 
       - name: Install dependencies
         # --ignore-scripts: no install script from any dependency runs. The
