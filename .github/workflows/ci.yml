@@ -61,3 +61,65 @@ jobs:
             echo "Run 'npm run refresh && npm run build' and commit the result."
             exit 1
           fi
+
+  # The language server is compiled from upstream source, which makes it the one
+  # slow step in the package. It runs only when its inputs differ from the base,
+  # so a data-only pull request stays fast, while a change to the build or the
+  # pin is verified before it can reach a release.
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Did the server inputs change?
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --quiet origin "${{ github.base_ref }}"
+            if git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+              | grep -qE '^(scripts/build-server\.mjs|provenance\.json)$'; then
+              echo "needed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "needed=false" >> "$GITHUB_OUTPUT"
+              echo "server inputs unchanged - skipping the upstream build"
+            fi
+          else
+            # On main this is the post-merge check, and there is no cheap base to
+            # diff against, so it always runs.
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.needed == 'true'
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        if: steps.scope.outputs.needed == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Build the language server from the pinned commit
+        if: steps.scope.outputs.needed == 'true'
+        run: npm run build:server
+
+      # Building the wrong commit would be silent otherwise: the script reads the
+      # pin, so this asserts that what it produced came from what we publish.
+      - name: The staged server matches the pin
+        if: steps.scope.outputs.needed == 'true'
+        run: |
+          node -e '
+            const built = require("./server/provenance.json")
+            const pinned = require("./provenance.json").upstreamRef
+            if (built.upstreamRef !== pinned) {
+              console.error("server built from " + built.upstreamRef)
+              console.error("but provenance.json pins " + pinned)
+              process.exit(1)
+            }
+            console.log("server built from the pinned commit " + pinned.slice(0, 10))
+          '
+
+          for required in server/browser/server.js server/node/server.js server/LICENSE.txt; do
+            [ -s "$required" ] || { echo "$required is missing or empty"; exit 1; }
+          done

@@ -1,19 +1,31 @@
 # SAS language support for editors
 
-`@sasjs/sas-language` provides completions, hover documentation and signatures for SAS.
+`@sasjs/sas-language` provides SAS language support in two forms, from one
+upstream source and one pinned commit:
 
-The data is resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
-and refreshed on a schedule, so this package owns the vocabulary rather than
-depending on a language server bundle. It carries no runtime dependencies and
-uses no Node built-ins, so it runs unchanged in a browser, in Node, and in an
-editor extension.
+    data/      the vocabulary: completions, hover documentation, signatures
+    server/    the SAS language server, compiled from upstream source
+
+Both are resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
+and refreshed on a schedule, so this package owns the language support rather than
+depending on an installed editor extension.
+
+The data is small, has no runtime dependencies and uses no Node built-ins, so it
+runs unchanged in a browser, in Node and in an editor extension. The server is the
+full language service - semantic tokens, diagnostics, context-aware completions -
+and is what an editor that wants a real parser loads.
 
 ## Why this exists
 
-An editor needs to know SAS. The alternatives were to bundle a 28 MB language
-server that also carries Python tooling, or to hand-maintain keyword lists. This
-package takes the third option: take the authoritative data, transform it into
-something cheap to load, and keep it current with a scheduled job.
+An editor needs to know SAS. The alternatives were to depend on an installed
+extension for the data, or to hand-maintain keyword lists. This package takes the
+authoritative data, transforms it into something cheap to load, and keeps it
+current with a scheduled job.
+
+The server is here for the same reason. Upstream publishes no built artifact - its
+`dist/` is ignored and it has no release assets - so anyone wanting the language
+service had to build it from source themselves. This package compiles it from the
+pinned commit and ships the result.
 
 ## Install
 
@@ -21,10 +33,12 @@ something cheap to load, and keep it current with a scheduled job.
 npm install @sasjs/sas-language
 ```
 
-The registry tarball ships the compiled output, so nothing is built on install.
+The registry tarball ships the compiled output, so nothing is built on install. It
+is roughly 6 MB compressed, carrying both the data and both server builds.
 
 A git install also works, but needs lifecycle scripts enabled, because the build
-output is not committed and `prepare` compiles it:
+output is not committed and `prepare` compiles it. A git install does not build the
+server, which takes a few minutes - run `npm run build:server` for that.
 
 ```
 npm install git+https://github.com/sasjs/sas-language.git#<commit>
@@ -57,6 +71,38 @@ const doc = docsFor(docs, 'abs')
 
 Every group is a separate path, so a bundler emits only the groups you import and
 the documentation as its own chunk.
+
+## The language server
+
+Two builds ship, because the two consumers run in different places:
+
+    server/browser/server.js   webworker build, for an editor in a browser
+    server/node/server.js      node build, run over IPC by a VS Code extension
+
+The node build is a fraction of the browser build, because the browser bundle
+inlines the Python stubs that the node build reads from disk.
+
+The server has to exist as a file on disk - a VS Code extension spawns it as a
+child process rather than importing it - so copy it out of the package at build
+time:
+
+```ts
+const serverModule = context.asAbsolutePath('server/node/server.js')
+
+const serverOptions: ServerOptions = {
+  run: { module: serverModule, transport: TransportKind.ipc }
+}
+const clientOptions: LanguageClientOptions = {
+  documentSelector: [{ language: 'sas' }]
+}
+
+new LanguageClient('sas-lsp', 'SAS', serverOptions, clientOptions).start()
+```
+
+`server/provenance.json` records the commit both builds came from. It also
+records `byteReproducible: false`: the upstream loader inlines the Python stubs in
+filesystem order rather than sorting them, so the artifact is deterministic in
+content but not in bytes.
 
 ### Groups
 
@@ -116,6 +162,12 @@ not degrade somebody's editor.
     npm run build     # transform into data/ and compile
     npm test          # validate the data and the transforms
 
+The server is compiled from the same pin, by `npm run build:server`. That step is
+heavier - it fetches upstream at the commit, installs its dependencies and runs its
+build - so it is deliberately not part of `npm run build`. It runs in CI when the
+build or the pin changes, weekly against the latest upstream, and before any
+publish.
+
 ## Repository hardening
 
 `.npmrc` installs without running lifecycle scripts, writes exact versions, enforces the `engines` field, and keeps the lockfile honest.
@@ -155,9 +207,12 @@ so merging it with a `fix:` or `feat:` subject is what cuts the next release.
 
 The publish step asks the registry first, so a push that produces no release
 reports that the version is already published and stays green, rather than
-failing with E403.
+failing with E403. When there is something to publish, it builds both the compiled
+API and the server, and refuses to publish if any artifact is missing.
 
 ## Licence
 
-The package is MIT. The data is derived from the SAS extension for Visual Studio
-Code, which is Apache-2.0; see `NOTICE`.
+The package is MIT. Both the data and the compiled server come from the SAS
+extension for Visual Studio Code, which is Apache-2.0. The server also carries
+pyright (MIT), typeshed (Apache-2.0), buffer (MIT) and ieee754 (BSD-3-Clause); the
+licence texts travel with it in `server/`. See `NOTICE`.

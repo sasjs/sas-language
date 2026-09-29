@@ -74,3 +74,26 @@ jobs:
       - name: Report no change
         if: steps.diff.outputs.changed == 'false'
         run: echo "Upstream data is unchanged; nothing to refresh."
+
+  # Upstream moving is the likeliest thing to break the server build, and this is
+  # the only job that looks at the latest upstream commit. It is a separate job so
+  # a broken server build is reported without holding up the data refresh.
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci --ignore-scripts
+
+      # Resolves the latest upstream commit and writes it to provenance.json. The
+      # point is to build from upstream as it is now, not from the committed pin,
+      # which is the commit we already know builds.
+      - name: Fetch the latest upstream
+        run: npm run refresh
+
+      - name: Does the server still build from upstream?
+        run: npm run build:server

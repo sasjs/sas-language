@@ -88,15 +88,22 @@ jobs:
             exit 0
           fi
 
-          # dist/ is not committed, and .npmrc sets ignore-scripts=true so the
-          # prepack build does not run here. Build explicitly rather than
-          # relying on an earlier step happening to leave dist/ on disk.
+          # Neither dist/ nor server/ is committed, and .npmrc sets
+          # ignore-scripts=true so the prepack build does not run here. Build
+          # both explicitly rather than relying on an earlier step happening to
+          # leave them on disk.
           npm run build
+          npm run build:server
 
-          if [ ! -f dist/index.js ]; then
-            echo "dist/index.js is missing - refusing to publish a package with no compiled API"
-            exit 1
-          fi
+          # A tarball missing either half of the package is worse than no
+          # release at all, so every artifact is checked before anything reaches
+          # npm.
+          for required in dist/index.js server/browser/server.js server/node/server.js; do
+            if [ ! -s "$required" ]; then
+              echo "$required is missing - refusing to publish an incomplete package"
+              exit 1
+            fi
+          done
 
           echo "publishing @sasjs/sas-language@${version}"
           npm publish --access public

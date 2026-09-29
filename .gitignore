@@ -5,5 +5,8 @@ node_modules/
 dist/
 *.tgz
 
+# The staged language server, compiled from source by `npm run build:server`.
+server/
+
 *.log
 .DS_Store
