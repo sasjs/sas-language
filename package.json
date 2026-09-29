@@ -31,6 +31,7 @@
     "build:ts": "tsc -p ./tsconfig.json",
     "build": "npm run build:data && npm run build:ts",
     "refresh": "npm run fetch && npm run build:data",
+    "prepare": "npm run build:ts",
     "test": "node --test ./test/*.test.mjs",
     "lint": "prettier --check .",
     "lint:fix": "prettier --write ."
