@@ -21,18 +21,17 @@ something cheap to load, and keep it current with a scheduled job.
 npm install @sasjs/sas-language
 ```
 
-It can also be taken from git, pinned to a commit:
+The registry tarball ships the compiled output, so nothing is built on install.
+
+A git install also works, but needs lifecycle scripts enabled, because the build
+output is not committed and `prepare` compiles it:
 
 ```
 npm install git+https://github.com/sasjs/sas-language.git#<commit>
 ```
 
-That works because `dist/` is committed, not built on install. It has to be: a
-consumer that sets `ignore-scripts=true` - as sasjs/server does - never runs the
-package's `prepare` script, so a git install would otherwise arrive with no
-compiled API at all. Note that npm rewrites a github git dependency to an ssh
-URL in the lockfile, which a CI without an ssh key cannot fetch, so prefer the
-registry where you can.
+Note that npm rewrites a github git dependency to an ssh URL in the lockfile,
+which a CI without an ssh key cannot fetch, so prefer the registry.
 
 ## Use
 

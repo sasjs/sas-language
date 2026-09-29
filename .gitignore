@@ -1,4 +1,9 @@
 node_modules/
 .upstream/
+
+# Build output is produced by `npm run build` and `npm pack`, never committed.
+dist/
+*.tgz
+
 *.log
 .DS_Store
