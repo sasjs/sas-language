@@ -210,6 +210,12 @@ reports that the version is already published and stays green, rather than
 failing with E403. When there is something to publish, it builds both the compiled
 API and the server, and refuses to publish if any artifact is missing.
 
+The workflow installs npm 11 before installing anything, because the trusted
+publisher needs 11.5.1 or later and a release should not adopt a new npm major on
+its own. `scripts/build-server.mjs` patches the upstream sub-build dispatch so the
+server builds on npm 11 and npm 12 alike; the pin keeps the release on the older
+of the two until the move is deliberate.
+
 ## Licence
 
 The package is MIT. Both the data and the compiled server come from the SAS

@@ -96,6 +96,15 @@ jobs:
         with:
           node-version: 22
 
+      # The same npm the publish workflow installs, so a toolchain difference
+      # cannot make this job pass while a release fails. npm 12 parses
+      # `npm run <script> --flag` differently from npm 11, and a release that ran
+      # on the newer npm failed while this job, on node 22's bundled npm 10,
+      # stayed green.
+      - name: Update npm
+        if: steps.scope.outputs.needed == 'true'
+        run: npm install -g npm@^11
+
       - name: Install dependencies
         if: steps.scope.outputs.needed == 'true'
         run: npm ci --ignore-scripts

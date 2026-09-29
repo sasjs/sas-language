@@ -103,8 +103,77 @@ const prepareSource = (ref) => {
   run(['git', 'checkout', '--quiet', '--force', 'FETCH_HEAD'], work)
 }
 
+/**
+ * The upstream build dispatches on npm's own config variables: it runs its
+ * sub-builds as `npm run compile --webviews` and reads the result back from
+ * `process.env.npm_config_webviews`.
+ *
+ * npm forwards such a flag to the script up to npm 11. npm 12 rejects it with
+ * EUNKNOWNCONFIG, which is how a release failed while CI, on the npm bundled with
+ * node 22, stayed green. Passing the flag after `--` gets it to the script on
+ * every npm, but leaves the environment variable unset, so the parent branch
+ * re-runs itself and the build never terminates.
+ *
+ * The dispatch is therefore rewritten to take the target from the command line or
+ * the environment, and the sub-builds are invoked with the separator form. Every
+ * replacement is asserted, so an upstream change to any of these call sites fails
+ * the build here rather than in a release.
+ */
+const SUB_BUILD_PATCHES = [
+  // The target arrives as an npm config flag, which the parent branch turns into
+  // `npm_config_<target>` in the child's environment. Read it from the command
+  // line as well, and keep `dev` from being confused for a target.
+  [
+    'const dev = process.argv[2];',
+    `const args = process.argv.slice(2);
+const subBuilds = ["static", "webviews", "client"];
+const target = subBuilds.find(
+  (name) => args.includes(\`--\${name}\`) || process.env[\`npm_config_\${name}\`],
+);
+const dev = args.includes("dev");`
+  ],
+  ['if (process.env.npm_config_static) {', 'if (target === "static") {'],
+  [
+    '} else if (process.env.npm_config_webviews || process.env.npm_config_client) {',
+    '} else if (target) {'
+  ],
+  [
+    'process.env.npm_config_webviews ? browserBuildOptions : nodeBuildOptions',
+    'target === "webviews" ? browserBuildOptions : nodeBuildOptions'
+  ],
+  // The sub-build invocations themselves, in the form every npm accepts.
+  [
+    'npm run ${process.env.npm_lifecycle_event} --webviews',
+    'npm run ${process.env.npm_lifecycle_event} -- --webviews'
+  ],
+  [
+    'npm run ${process.env.npm_lifecycle_event} --client',
+    'npm run ${process.env.npm_lifecycle_event} -- --client'
+  ],
+  [
+    'npm run ${process.env.npm_lifecycle_event} --static',
+    'npm run ${process.env.npm_lifecycle_event} -- --static'
+  ]
+]
+
+const patchSubBuildDispatch = () => {
+  const file = join(work, 'tools', 'build.mjs')
+  let source = readFileSync(file, 'utf8')
+  for (const [from, to] of SUB_BUILD_PATCHES) {
+    if (!source.includes(from)) {
+      throw new Error(
+        `upstream tools/build.mjs does not contain ${JSON.stringify(from)}, ` +
+          'so the sub-build dispatch patch did not apply'
+      )
+    }
+    source = source.split(from).join(to)
+  }
+  writeFileSync(file, source)
+}
+
 const build = (ref) => {
   prepareSource(ref)
+  patchSubBuildDispatch()
 
   // The lockfile is committed upstream, so `npm ci` is both faster and the same
   // install the extension's own CI performs.
