@@ -1,6 +1,6 @@
-# @sasjs/language-data
+# SAS language support for editors
 
-SAS language data for editors: completions, hover documentation and signatures.
+`@sasjs/sas-language` provides completions, hover documentation and signatures for SAS.
 
 The data is resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
 and refreshed on a schedule, so this package owns the vocabulary rather than
@@ -18,7 +18,7 @@ something cheap to load, and keep it current with a scheduled job.
 ## Install
 
 ```
-npm install @sasjs/language-data
+npm install @sasjs/sas-language
 ```
 
 ## Use
@@ -30,8 +30,8 @@ text is fetched only when the user actually hovers.
     data/<group>.docs.json     hover documentation, ~1.2 MB across all groups
 
 ```ts
-import functionsIndex from '@sasjs/language-data/data/functions.index.json'
-import { completionItems, docsFor, groupDocsPath } from '@sasjs/language-data'
+import functionsIndex from '@sasjs/sas-language/data/functions.index.json'
+import { completionItems, docsFor, groupDocsPath } from '@sasjs/sas-language'
 
 // Eager: completion items, ready for monaco.languages.registerCompletionItemProvider
 const items = completionItems(functionsIndex)

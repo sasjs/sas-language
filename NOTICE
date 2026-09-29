@@ -1,4 +1,4 @@
-@sasjs/language-data
+@sasjs/sas-language
 Copyright (c) 2026 SASjs
 
 The generated data in data/ and provenance.json is derived from the SAS extension

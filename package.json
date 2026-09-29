@@ -1,5 +1,5 @@
 {
-  "name": "@sasjs/language-data",
+  "name": "@sasjs/sas-language",
   "version": "0.1.0",
   "description": "SAS language data for editors: completions, hover documentation and signatures, resolved from the SAS extension for VS Code",
   "license": "MIT",

@@ -14,8 +14,8 @@
  * bundle. The data is imported by path, which keeps every group tree-shakeable
  * and lets a bundler emit the documentation as a separate chunk:
  *
- *   import functionsIndex from '@sasjs/language-data/data/functions.index.json'
- *   import { completionItems, toEntries, docsFor } from '@sasjs/language-data'
+ *   import functionsIndex from '@sasjs/sas-language/data/functions.index.json'
+ *   import { completionItems, toEntries, docsFor } from '@sasjs/sas-language'
  *
  *   const items = completionItems(functionsIndex)
  *
@@ -67,8 +67,8 @@ export const docsFor = (docs: DocsFile, name: string): DocEntry | undefined => {
 
 /** The path of a group's completion index inside the package. */
 export const groupIndexPath = (group: string): string =>
-  `@sasjs/language-data/data/${group}.index.json`
+  `@sasjs/sas-language/data/${group}.index.json`
 
 /** The path of a group's documentation inside the package. */
 export const groupDocsPath = (group: string): string =>
-  `@sasjs/language-data/data/${group}.docs.json`
+  `@sasjs/sas-language/data/${group}.docs.json`

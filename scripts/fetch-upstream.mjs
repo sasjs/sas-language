@@ -32,7 +32,7 @@ const resolveRef = async (requested) => {
   if (requested) return requested
   const response = await fetch(
     `https://api.github.com/repos/${UPSTREAM.owner}/${UPSTREAM.repo}/commits/main`,
-    { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'sasjs-language-data' } }
+    { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'sasjs-language' } }
   )
   if (!response.ok) {
     throw new Error(`cannot resolve upstream HEAD: ${response.status} ${response.statusText}`)
@@ -43,7 +43,7 @@ const resolveRef = async (requested) => {
 
 const download = async (file, ref) => {
   const url = `https://raw.githubusercontent.com/${UPSTREAM.owner}/${UPSTREAM.repo}/${ref}/${UPSTREAM.dataDir}/${file}`
-  const response = await fetch(url, { headers: { 'User-Agent': 'sasjs-language-data' } })
+  const response = await fetch(url, { headers: { 'User-Agent': 'sasjs-language' } })
   if (!response.ok) {
     // A renamed or removed upstream file must fail the refresh, not silently
     // shrink the package.
