@@ -46,7 +46,21 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        run: npm ci
+        # --ignore-scripts: no install script from any dependency runs. The
+        # gitleaks binary below is a plain devDependency binary and needs no
+        # postinstall.
+        run: npm ci --ignore-scripts
+
+      # A release is the worst place to discover a leaked credential or a new
+      # advisory, so the same gates CI applies are applied here.
+      - name: Scan for secrets (gitleaks)
+        run: node_modules/.bin/gitleaks detect --source . --redact --no-banner -v
+
+      - name: Audit the shipped dependencies
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Audit every dependency, dev included
+        run: npm run audit
 
       - name: Lint
         run: npm run lint

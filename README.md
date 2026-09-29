@@ -21,8 +21,7 @@ something cheap to load, and keep it current with a scheduled job.
 npm install @sasjs/sas-language
 ```
 
-Until the package is on the registry it can be taken from git, pinned to a
-commit:
+It can also be taken from git, pinned to a commit:
 
 ```
 npm install git+https://github.com/sasjs/sas-language.git#<commit>
@@ -31,7 +30,9 @@ npm install git+https://github.com/sasjs/sas-language.git#<commit>
 That works because `dist/` is committed, not built on install. It has to be: a
 consumer that sets `ignore-scripts=true` - as sasjs/server does - never runs the
 package's `prepare` script, so a git install would otherwise arrive with no
-compiled API at all.
+compiled API at all. Note that npm rewrites a github git dependency to an ssh
+URL in the lockfile, which a CI without an ssh key cannot fetch, so prefer the
+registry where you can.
 
 ## Use
 
@@ -115,6 +116,18 @@ not degrade somebody's editor.
     npm run fetch     # download at the latest upstream commit
     npm run build     # transform into data/ and compile
     npm test          # validate the data and the transforms
+
+## Repository hardening
+
+`.npmrc` installs without running lifecycle scripts, writes exact versions, enforces the `engines` field, and keeps the lockfile honest.
+
+`.git-hooks/` carries the org's checks: a `pre-commit` that scans the staged diff with gitleaks and refuses a commit over 2MB, and a `commit-msg` that enforces Conventional Commits. `npm run prepare` wires them up, but `.npmrc` sets `ignore-scripts=true`, which suppresses it - so after a fresh clone:
+
+```
+git config core.hooksPath ./.git-hooks
+```
+
+A hook is best-effort, so CI enforces the same things from the other side: a full-history `gitleaks detect`, `npm audit --omit=dev --audit-level=low` for the shipped surface, and `npm run audit` for everything else, dev dependencies included. That last one fails on any advisory outside two documented exemptions - see `scripts/audit.mjs` - so a new advisory anywhere else cannot land quietly.
 
 ## Releasing
 
