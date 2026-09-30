@@ -103,7 +103,7 @@ jobs:
           # A tarball missing either half of the package is worse than no
           # release at all, so every artifact is checked before anything reaches
           # npm.
-          for required in dist/index.js server/browser/server.js server/node/server.js; do
+          for required in dist/index.js server/browser/server.js server/node/dist/node/server.js server/node/pubsdata server/node/messagebundle.properties; do
             if [ ! -s "$required" ]; then
               echo "$required is missing - refusing to publish an incomplete package"
               exit 1

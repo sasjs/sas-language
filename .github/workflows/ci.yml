@@ -129,6 +129,6 @@ jobs:
             console.log("server built from the pinned commit " + pinned.slice(0, 10))
           '
 
-          for required in server/browser/server.js server/node/server.js server/LICENSE.txt; do
+          for required in server/browser/server.js server/node/dist/node/server.js server/node/dist/node/package.json server/node/pubsdata server/LICENSE.txt; do
             [ -s "$required" ] || { echo "$required is missing or empty"; exit 1; }
           done
