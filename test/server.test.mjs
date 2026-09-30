@@ -7,6 +7,11 @@
  * data and the message bundles - all relative to the bundle. A staging that
  * ships the entry alone boots and then fails on the first feature that reads
  * a sibling, so the tests here assert the whole shape.
+ *
+ * The server/ directory is a build artifact: CI's server job builds and then
+ * runs this file, while the build job has not staged a server. A missing
+ * tree is therefore a skip with the reason printed - not a failure - so the
+ * suite tells the two situations apart instead of guessing.
  */
 import assert from 'node:assert/strict'
 import { readFile, readdir, stat } from 'node:fs/promises'
@@ -26,11 +31,17 @@ const exists = async (file) => {
   }
 }
 
-test('the browser build is a single file', async () => {
+const staged = await exists(SERVER)
+
+test('the browser build is a single file', async (t) => {
+  if (!staged) return t.skip('no staged server: run npm run build:server')
+
   assert.ok(await exists(path.join(SERVER, 'browser', 'server.js')))
 })
 
-test('the node build carries its runtime directories', async () => {
+test('the node build carries its runtime directories', async (t) => {
+  if (!staged) return t.skip('no staged server: run npm run build:server')
+
   const bundleDir = path.join(SERVER, 'node', 'dist', 'node')
 
   assert.ok(await exists(path.join(bundleDir, 'server.js')), 'the entry point')
@@ -40,14 +51,18 @@ test('the node build carries its runtime directories', async () => {
   }
 })
 
-test('the node build parses as CommonJS', async () => {
+test('the node build parses as CommonJS', async (t) => {
+  if (!staged) return t.skip('no staged server: run npm run build:server')
+
   const marker = JSON.parse(
     await readFile(path.join(SERVER, 'node', 'dist', 'node', 'package.json'), 'utf8')
   )
   assert.equal(marker.type, 'commonjs')
 })
 
-test('the data the node bundle resolves two levels up is staged', async () => {
+test('the data the node bundle resolves two levels up is staged', async (t) => {
+  if (!staged) return t.skip('no staged server: run npm run build:server')
+
   // The bundle sits at server/node/dist/node/server.js; two levels up is
   // server/node/, where it reads pubsdata/, data/ and the message bundles.
   const parent = path.join(SERVER, 'node')
@@ -60,7 +75,9 @@ test('the data the node bundle resolves two levels up is staged', async () => {
   assert.ok(statements.length > 0, 'the statement help is staged')
 })
 
-test('the message bundle is readable as the server reads it', async () => {
+test('the message bundle is readable as the server reads it', async (t) => {
+  if (!staged) return t.skip('no staged server: run npm run build:server')
+
   const bundle = await readFile(path.join(SERVER, 'node', 'messagebundle.properties'), 'utf8')
   assert.ok(bundle.includes('='), 'the bundle carries key=value pairs')
 })
