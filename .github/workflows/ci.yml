@@ -34,7 +34,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=low
 
       - name: Audit every dependency, dev included
-        # Fails on any advisory outside the two documented exemptions, which
+        # Fails on any advisory outside the documented exemptions, which
         # live inside the npm package that @semantic-release/npm bundles and
         # cannot be reached from here. See scripts/audit.mjs.
         run: npm run audit
@@ -129,6 +129,6 @@ jobs:
             console.log("server built from the pinned commit " + pinned.slice(0, 10))
           '
 
-          for required in server/browser/server.js server/node/server.js server/LICENSE.txt; do
+          for required in server/browser/server.js server/node/dist/node/server.js server/node/dist/node/package.json server/node/pubsdata server/LICENSE.txt; do
             [ -s "$required" ] || { echo "$required is missing or empty"; exit 1; }
           done

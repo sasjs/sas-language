@@ -17,11 +17,32 @@
  */
 import { execFileSync } from 'node:child_process'
 
-/** Advisories that cannot be fixed from this repo, and why. */
+/**
+ * Advisories that cannot be fixed from this repo, and why.
+ */
 const EXEMPT = new Map([
   ['GHSA-rpw4-54j3-4h4q', 'ip-address, inside the npm package bundled by @semantic-release/npm'],
   ['GHSA-2vr4-cq9g-pvrc', 'ip-address, inside the npm package bundled by @semantic-release/npm'],
-  ['GHSA-3wwx-pv8p-q78v', 'undici, inside the npm package bundled by @semantic-release/npm']
+  ['GHSA-3wwx-pv8p-q78v', 'undici, inside the npm package bundled by @semantic-release/npm'],
+  // The advisories below landed upstream after the exemptions above were
+  // written, against the same bundled copies. npm 12.1.0 bundles identical
+  // versions of all three packages, so an upgrade clears none of them.
+  ['GHSA-j6r3-76f7-8jcv', 'ip-address, inside the npm package bundled by @semantic-release/npm'],
+  ['GHSA-h3mg-xc3c-68pw', 'ip-address, inside the npm package bundled by @semantic-release/npm'],
+  ['GHSA-r53p-7pc4-xj5r', 'undici, inside the npm package bundled by @semantic-release/npm'],
+  ['GHSA-rfgv-xxqx-mfg5', 'undici, inside the npm package bundled by @semantic-release/npm'],
+  [
+    'GHSA-q2hr-2g5m-vwhr',
+    'brace-expansion, inside the npm package bundled by @semantic-release/npm'
+  ],
+  [
+    'GHSA-qhr7-859c-m2p7',
+    'brace-expansion, inside the npm package bundled by @semantic-release/npm'
+  ],
+  [
+    'GHSA-6j4f-fj2g-mc7p',
+    'brace-expansion, inside the npm package bundled by @semantic-release/npm'
+  ]
 ])
 
 const run = () => {
