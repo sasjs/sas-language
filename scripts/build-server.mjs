@@ -18,7 +18,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { copyFile } from 'node:fs/promises'
+import { copyFile, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -31,8 +31,39 @@ const stage = join(root, 'server')
 
 const TARGETS = [
   { name: 'browser', from: 'server/dist/browser/server.js', to: 'browser/server.js' },
-  { name: 'node', from: 'server/dist/node/server.js', to: 'node/server.js' }
+  {
+    name: 'node',
+    from: 'server/dist/node/server.js',
+    // The node bundle resolves its runtime files relative to itself, and the
+    // upstream build places it at server/dist/node/. The staged tree mirrors
+    // that depth exactly, so every relative path the bundle computes - the
+    // impl/ and typeshed-fallback/ directories beside it, the pubsdata/ and
+    // data/ trees two levels up, the message bundles - resolves to a file
+    // that exists here too.
+    to: 'node/dist/node/server.js'
+  }
 ]
+
+/**
+ * The node build loads parts of itself and its data from disk at runtime:
+ *
+ * - impl/ and typeshed-fallback/ beside the bundle
+ * - two levels up from the bundle, which is server/node/dist/ in the staged
+ *   tree: the SAS documentation tree (pubsdata/), the runtime data (data/),
+ *   and the localised message bundles. The browser build inlines all of it,
+ *   so it stays a single file.
+ */
+const NODE_RUNTIME_DIRS = ['impl', 'typeshed-fallback']
+const NODE_PARENT_DATA = ['pubsdata', 'data', 'messagebundle.properties']
+
+/**
+ * The package root declares "type": "module" for the TypeScript build, which
+ * makes node parse every .js under it as ESM. The server bundles are
+ * CommonJS, so the node target carries a local package.json that restores
+ * CommonJS parsing for its own directory. Without it, node rejects the
+ * server at startup with "require is not defined in ES module scope".
+ */
+const NODE_CJS_MARKER = JSON.stringify({ type: 'commonjs' }, null, 2) + '\n'
 
 /**
  * Licence texts the server's components require us to carry.
@@ -190,6 +221,60 @@ const build = (ref) => {
   run(['npm', 'run', 'compile-browser'], work)
 }
 
+/**
+ * Stages the node build's runtime directories beside its entry point. The
+ * node build loads parts of itself from disk at runtime: the SAS formatter's
+ * impl/ modules and the typeshed Python stubs. The browser build inlines
+ * both, so it stays a single file.
+ */
+const stageNodeRuntimeDirs = async () => {
+  const bundleDir = join(stage, 'node', 'dist', 'node')
+  // The bundle resolves its data two levels up from itself. It sits at
+  // server/node/dist/node/server.js, so two levels up is server/node/ - the
+  // same shape upstream produces with server/dist/node/ under server/.
+  const parentDir = join(stage, 'node')
+
+  for (const dir of NODE_RUNTIME_DIRS) {
+    const from = join(work, 'server/dist/node', dir)
+    if (!existsSync(from)) {
+      throw new Error(`node build produced no ${dir}/`)
+    }
+    await copyDir(from, join(bundleDir, dir))
+  }
+
+  // The data the bundle resolves two levels up. The upstream tree keeps it
+  // under server/, so the staged tree keeps it under server/node/dist/.
+  for (const name of NODE_PARENT_DATA) {
+    const source = join(work, 'server', name)
+    if (!existsSync(source)) {
+      throw new Error(`upstream tree has no ${name}, which the node server reads`)
+    }
+    if (name.endsWith('.properties')) {
+      await copyFile(source, join(parentDir, name))
+    } else {
+      await copyDir(source, join(parentDir, name))
+    }
+  }
+
+  writeFileSync(join(bundleDir, 'package.json'), NODE_CJS_MARKER)
+}
+
+/**
+ * Copies a directory tree, creating the destination as needed.
+ */
+const copyDir = async (from, to) => {
+  mkdirSync(to, { recursive: true })
+  for (const entry of await readdir(from, { withFileTypes: true })) {
+    const source = join(from, entry.name)
+    const destination = join(to, entry.name)
+    if (entry.isDirectory()) {
+      await copyDir(source, destination)
+    } else {
+      await copyFile(source, destination)
+    }
+  }
+}
+
 const stageTargets = async () => {
   const staged = []
   for (const target of TARGETS) {
@@ -207,6 +292,11 @@ const stageTargets = async () => {
       sha256: sha256(destination)
     })
   }
+
+  // Both the fresh-build and the reuse path stage these, so a reused build
+  // ships the same layout a fresh one does.
+  await stageNodeRuntimeDirs()
+
   return staged
 }
 
@@ -251,21 +341,6 @@ const stageLicences = async () => {
   writeFileSync(join(stage, 'LICENSE.pyright.txt'), PYRIGHT_LICENCE)
 }
 
-/** Describe the staged server without rebuilding it. */
-const describeStaged = () =>
-  TARGETS.map((target) => {
-    const file = join(stage, target.to)
-    if (!existsSync(file)) {
-      throw new Error(`no staged ${target.to}: run with FORCE_SERVER_BUILD=1`)
-    }
-    return {
-      target: target.name,
-      file: `server/${target.to}`,
-      bytes: readFileSync(file).length,
-      sha256: sha256(file)
-    }
-  })
-
 const report = (staged) => {
   for (const target of staged) {
     console.log(
@@ -280,11 +355,12 @@ const force = process.env.FORCE_SERVER_BUILD === '1'
 const alreadyBuilt = existsSync(marker) && readFileSync(marker, 'utf8').trim() === ref
 
 if (alreadyBuilt && !force) {
-  // Reuse the staged server, but still record it: the tarball's provenance
-  // describes what it ships, whether or not this run did the compiling.
+  // Reuse the upstream build, but still stage and record it: the tarball's
+  // provenance describes what it ships, whether or not this run did the
+  // compiling.
   console.log(`server: already built from ${ref.slice(0, 10)}, reusing`)
   console.log('  set FORCE_SERVER_BUILD=1 to rebuild')
-  const staged = describeStaged()
+  const staged = await stageTargets()
   await stageLicences()
   recordProvenance(ref, staged)
   report(staged)

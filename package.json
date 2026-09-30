@@ -17,7 +17,7 @@
     },
     "./data/*": "./data/*",
     "./server/browser": "./server/browser/server.js",
-    "./server/node": "./server/node/server.js",
+    "./server/node": "./server/node/dist/node/server.js",
     "./provenance.json": "./provenance.json"
   },
   "files": [

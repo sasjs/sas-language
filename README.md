@@ -76,18 +76,22 @@ the documentation as its own chunk.
 
 Two builds ship, because the two consumers run in different places:
 
-    server/browser/server.js   webworker build, for an editor in a browser
-    server/node/server.js      node build, run over IPC by a VS Code extension
+    server/browser/server.js            webworker build, for an editor in a browser
+    server/node/dist/node/server.js     node build, run over IPC by a VS Code extension
 
-The node build is a fraction of the browser build, because the browser bundle
-inlines the Python stubs that the node build reads from disk.
+The browser build is a single file: it inlines everything. The node build is a
+directory tree, because it reads parts of itself from disk at runtime - the
+formatter's impl/ modules, the Python typeshed stubs, the SAS documentation
+tree and the localised message bundles. The staged layout mirrors the depth the
+upstream build produces (server/node/dist/node/), so every relative path the
+bundle computes resolves inside the package.
 
 The server has to exist as a file on disk - a VS Code extension spawns it as a
-child process rather than importing it - so copy it out of the package at build
-time:
+child process rather than importing it - so copy the whole node tree out of the
+package at build time, preserving its internal layout:
 
 ```ts
-const serverModule = context.asAbsolutePath('server/node/server.js')
+const serverModule = context.asAbsolutePath('out/server/dist/node/server.js')
 
 const serverOptions: ServerOptions = {
   run: { module: serverModule, transport: TransportKind.ipc }
