@@ -34,15 +34,15 @@
       "group": "macroStatements",
       "label": "SAS macro statement",
       "kind": 17,
-      "count": 32,
-      "documented": 32
+      "count": 37,
+      "documented": 34
     },
     {
       "group": "macroFunctions",
       "label": "SAS macro function",
       "kind": 1,
-      "count": 65,
-      "documented": 65
+      "count": 89,
+      "documented": 78
     },
     {
       "group": "formats",

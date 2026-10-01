@@ -118,6 +118,39 @@ test('an option that takes a value is flagged and inserts its equals', async () 
   assert.equal(bufno[2], 1, 'BUFNO is flagged as taking a value')
 })
 
+test('the macro groups carry the SAS macro names the upstream data omits', async () => {
+  const names = async (group) => {
+    const index = await readJson(path.join(DATA, `${group}.index.json`))
+    return new Set(index.entries.map(([name]) => name))
+  }
+
+  // The keyword files and the pubsdata lists each hold part of the macro
+  // vocabulary, and scripts/supplements.mjs fills what neither carries. These
+  // are the names a consumer needs to recognise a SAS-provided macro.
+  const statements = await names('macroStatements')
+  for (const name of ['%DO', '%THEN', '%BY', '%TO', '%INC', '%INCLUDE']) {
+    assert.ok(statements.has(name), `${name} is a macro statement`)
+  }
+
+  const functions = await names('macroFunctions')
+  for (const name of [
+    '%INDEXC',
+    '%INDEXW',
+    '%QINDEX',
+    '%TRANWRD',
+    '%TRANSLATE',
+    '%TRIMN',
+    '%QBQUOTE',
+    '%QDEQUOTE',
+    '%KINDEX',
+    '%KSCAN',
+    '%QKSCAN',
+    '%QKLOWCASE'
+  ]) {
+    assert.ok(functions.has(name), `${name} is a macro function`)
+  }
+})
+
 test('transforms unpack, label and insert correctly', async () => {
   const { toEntries, completionItems, docsFor, words } = await import('../dist/index.js')
 

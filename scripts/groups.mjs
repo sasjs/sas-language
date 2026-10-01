@@ -17,7 +17,8 @@
 export const UPSTREAM = {
   owner: 'sassoftware',
   repo: 'vscode-sas-extension',
-  dataDir: 'server/data'
+  dataDir: 'server/data',
+  pubsDataDir: 'server/pubsdata'
 }
 
 export const GROUPS = [
@@ -53,13 +54,28 @@ export const GROUPS = [
     id: 'macroStatements',
     label: 'SAS macro statement',
     kind: 17,
-    files: ['SASMacroStatements.json']
+    files: ['SASMacroStatements.json'],
+    // The language server ships a second, differently shaped copy of the macro
+    // vocabulary under pubsdata/. It holds names the data files omit, so both
+    // are consumed.
+    pubsdata: [
+      {
+        file: 'Statements/en/macro.json',
+        type: 'MACRO_STATEMENT'
+      }
+    ]
   },
   {
     id: 'macroFunctions',
     label: 'SAS macro function',
     kind: 1,
-    files: ['SASMacroFunctions.json', 'SASAutocallMacros.json', 'SASARMMacros.json']
+    files: ['SASMacroFunctions.json', 'SASAutocallMacros.json', 'SASARMMacros.json'],
+    pubsdata: [
+      {
+        file: 'Functions/en/macro.json',
+        type: 'MACRO_FUNCTION'
+      }
+    ]
   },
   {
     id: 'formats',
@@ -159,5 +175,15 @@ export const GROUPS = [
   }
 ]
 
-/** Every upstream file the table references. */
-export const upstreamFiles = () => [...new Set(GROUPS.flatMap((group) => group.files))]
+/**
+ * Every upstream file the table references, as a path relative to the repo
+ * root, so the fetch and the build agree on where a file lives.
+ */
+export const upstreamFiles = () => [
+  ...new Set(
+    GROUPS.flatMap((group) => [
+      ...group.files.map((file) => `${UPSTREAM.dataDir}/${file}`),
+      ...(group.pubsdata ?? []).map(({ file }) => `${UPSTREAM.pubsDataDir}/${file}`)
+    ])
+  )
+]
