@@ -1,10 +1,11 @@
 /**
  * Downloads the SAS language data files from the SAS extension for VS Code.
  *
- * Writes them under .upstream/ and records exactly what was fetched in
- * .upstream/manifest.json: the resolved commit, and a sha256 and byte count per
- * file. The manifest is what makes a refresh reviewable - it shows which
- * upstream commit produced a data change, rather than only that a file moved.
+ * Writes them under .upstream/, mirroring their repo path, and records exactly
+ * what was fetched in .upstream/manifest.json: the resolved commit, and a
+ * sha256 and byte count per file. The manifest is what makes a refresh
+ * reviewable - it shows which upstream commit produced a data change, rather
+ * than only that a file moved.
  *
  * Usage:
  *   node scripts/fetch-upstream.mjs                  # latest commit on main
@@ -42,7 +43,7 @@ const resolveRef = async (requested) => {
 }
 
 const download = async (file, ref) => {
-  const url = `https://raw.githubusercontent.com/${UPSTREAM.owner}/${UPSTREAM.repo}/${ref}/${UPSTREAM.dataDir}/${file}`
+  const url = `https://raw.githubusercontent.com/${UPSTREAM.owner}/${UPSTREAM.repo}/${ref}/${file}`
   const response = await fetch(url, { headers: { 'User-Agent': 'sasjs-language' } })
   if (!response.ok) {
     // A renamed or removed upstream file must fail the refresh, not silently
@@ -63,7 +64,7 @@ const main = async () => {
   let read
   if (from) {
     ref = requested ?? 'local'
-    read = (file) => readFile(path.join(from, UPSTREAM.dataDir, file))
+    read = (file) => readFile(path.join(from, file))
   } else {
     ref = await resolveRef(requested)
     read = (file) => download(file, ref)

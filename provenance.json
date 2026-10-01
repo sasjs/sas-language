@@ -69,12 +69,12 @@
       "files": [
         "SASMacroStatements.json"
       ],
-      "count": 32,
-      "documented": 32,
-      "indexBytes": 1046,
-      "docsBytes": 7622,
-      "indexSha256": "76b55f8486d38e69e376f2cc8a03b4ee69ede2cc780a76ecf936cef63af68155",
-      "docsSha256": "51f3282c9c5bfdcb04347f1ef8c9fa8cb4c2df42f827315eabadcbe96e4b6ba5"
+      "count": 37,
+      "documented": 34,
+      "indexBytes": 1182,
+      "docsBytes": 3848,
+      "indexSha256": "a18b7d5c60d1db7267b38f6d0907be147d091b2635ddafd4d5f1522cf1dbecd4",
+      "docsSha256": "8048ca8579911a97a1b4a4fcbbce93802445f9ffebc8b807eceaabca2710bf38"
     },
     {
       "group": "macroFunctions",
@@ -85,12 +85,12 @@
         "SASAutocallMacros.json",
         "SASARMMacros.json"
       ],
-      "count": 65,
-      "documented": 65,
-      "indexBytes": 1957,
-      "docsBytes": 22559,
-      "indexSha256": "3703fd62cc040563b6e1359f0548985b10fcba2ddbb365bc2acabadb9d4a6c9b",
-      "docsSha256": "035dbbe823e8d5266e8502765a54dfa941637632b48c9a0f194c19b84a958432"
+      "count": 89,
+      "documented": 78,
+      "indexBytes": 2674,
+      "docsBytes": 20711,
+      "indexSha256": "bc532cbec2eaa62dc661706faaedf7aa90b0f6604e2633f914f8ead06037b7ae",
+      "docsSha256": "fa28c86b96f6053776e2ada7e54dfa1938381628658353cd0f99bdf73293e64f"
     },
     {
       "group": "formats",

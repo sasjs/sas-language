@@ -5,6 +5,10 @@
  *   data/<group>.index.json  completion index, compact tuples: [name, type, takesValue?]
  *   data/<group>.docs.json   hover documentation, keyed by name
  *
+ * A group can read two upstream shapes: the extension's keyword files
+ * (`{ Keywords: { Keyword: [] } }`) and the language server's flat pubsdata
+ * lists. scripts/supplements.mjs then fills any SAS macro name neither carries.
+ *
  * The split exists because the two have very different sizes and lifetimes: a
  * completion provider wants the whole index up front, while hover text is only
  * needed once the user points at a word, so it can be a lazy chunk.
@@ -19,6 +23,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { GROUPS, UPSTREAM } from './groups.mjs'
+import { SUPPLEMENTS } from './supplements.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE = path.join(ROOT, '.upstream')
@@ -59,31 +64,69 @@ const readKeywords = async (file) => {
   return rows
 }
 
+/**
+ * Reads one of the language server's `pubsdata` files. These carry the same
+ * vocabulary as the data files but as a flat list, with the prose description
+ * in place of the keyword help.
+ */
+const readPubsdata = async (file) => {
+  const raw = await readFile(path.join(SOURCE, file), 'utf8')
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch (error) {
+    throw new Error(`${file} is not valid JSON: ${error.message}`)
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      `${file} has an unexpected shape: expected an array of { name, description }, got ${typeof parsed}`
+    )
+  }
+  return parsed
+}
+
 const buildGroup = async (group) => {
   const index = new Map()
   const docs = {}
 
+  const add = (name, type, help, takesValue, extra) => {
+    if (!index.has(name)) {
+      index.set(name, takesValue ? [name, type, 1] : [name, type])
+    }
+    if (typeof help === 'string' && help.trim()) {
+      docs[name] = extra ? { help, ...extra } : { help }
+    }
+  }
+
   for (const file of group.files) {
-    const rows = await readKeywords(file)
+    const rows = await readKeywords(`${UPSTREAM.dataDir}/${file}`)
     for (const row of rows) {
       if (!row || typeof row !== 'object') continue
       const help = row.Help?.['#cdata']
+      const extra = {}
+      if (row.Values) extra.values = row.Values
+      if (row.ToolTips) extra.tooltips = row.ToolTips
+      if (row.SubOptionsKeywords) extra.subOptions = row.SubOptionsKeywords
+      if (row.Attributes) extra.attributes = row.Attributes
+      if (row.States) extra.states = row.States
       for (const { name, takesValue } of parseName(row.Name)) {
-        if (!index.has(name)) {
-          const tuple = takesValue ? [name, row.Type, 1] : [name, row.Type]
-          index.set(name, tuple)
-        }
-        if (typeof help === 'string' && help.trim()) {
-          const entry = { help }
-          if (row.Values) entry.values = row.Values
-          if (row.ToolTips) entry.tooltips = row.ToolTips
-          if (row.SubOptionsKeywords) entry.subOptions = row.SubOptionsKeywords
-          if (row.Attributes) entry.attributes = row.Attributes
-          if (row.States) entry.states = row.States
-          docs[name] = entry
-        }
+        add(name, row.Type, help, takesValue, Object.keys(extra).length ? extra : undefined)
       }
     }
+  }
+
+  for (const source of group.pubsdata ?? []) {
+    const rows = await readPubsdata(`${UPSTREAM.pubsDataDir}/${source.file}`)
+    for (const row of rows) {
+      if (!row || typeof row.name !== 'string' || !row.name) continue
+      add(row.name, source.type, row.description, false)
+    }
+  }
+
+  // Names upstream does not carry yet. An upstream row always wins, so this
+  // list shrinks on its own as upstream fills the gaps.
+  for (const [name, type] of SUPPLEMENTS[group.id] ?? []) {
+    if (!index.has(name)) index.set(name, [name, type])
   }
 
   if (index.size === 0) {
