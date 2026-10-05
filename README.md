@@ -182,7 +182,7 @@ publish.
 git config core.hooksPath ./.git-hooks
 ```
 
-A hook is best-effort, so CI enforces the same things from the other side: a full-history `gitleaks detect`, `npm audit --omit=dev --audit-level=low` for the shipped surface, and `npm run audit` for everything else, dev dependencies included. That last one fails on any advisory outside two documented exemptions - see `scripts/audit.mjs` - so a new advisory anywhere else cannot land quietly.
+A hook is best-effort, so CI enforces the same things from the other side: a full-history `gitleaks detect` and `npm audit --audit-level=low` across every dependency, dev included. The package has no runtime dependencies, so any advisory at all is a real one.
 
 ## Releasing
 
@@ -192,6 +192,12 @@ Versioning is semantic-release's job: it reads the conventional commits since th
 last tag, bumps the version, tags the release and writes the release notes.
 Publishing is a separate step, and it uses the npm trusted publisher, so no token
 is stored anywhere.
+
+semantic-release is deliberately **not** a devDependency. Its tree is where every
+advisory in this repo used to come from - `micromatch` -> `braces`, and the npm
+package `@semantic-release/npm` bundles - and none of them has a patched release.
+`npx` fetches the pinned pair for the release run only, so nothing of it enters
+the lockfile or the audit.
 
 Setup, once: on npmjs.com, add a trusted publisher for `@sasjs/sas-language` -
 repository `sasjs/sas-language`, workflow `publish.yml`, environment blank.
