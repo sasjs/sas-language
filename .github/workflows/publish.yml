@@ -49,11 +49,11 @@ jobs:
       - name: Scan for secrets (gitleaks)
         run: node_modules/.bin/gitleaks detect --source . --redact --no-banner -v
 
-      - name: Audit the shipped dependencies
-        run: npm audit --omit=dev --audit-level=low
-
-      - name: Audit every dependency, dev included
-        run: npm run audit
+      - name: Audit dependencies
+        # Every dependency, dev included. The package has no runtime
+        # dependencies, and the release tooling is not installed here, so any
+        # advisory at all is a real one.
+        run: npm audit --audit-level=low
 
       - name: Lint
         run: npm run lint
@@ -76,7 +76,12 @@ jobs:
           fi
 
       - name: Semantic release
-        run: npx semantic-release
+        # semantic-release is not a devDependency: its tree is where every
+        # advisory in this repo came from (micromatch -> braces, and the npm
+        # package @semantic-release/npm bundles), and no upgrade clears them.
+        # npx fetches the pinned pair for the release only, so the installed
+        # tree - and the audit above - stays clean. Same shape as sasjs/cli.
+        run: npx -p @semantic-release/exec@7.1.0 -p semantic-release@25.0.9 -- semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

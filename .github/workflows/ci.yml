@@ -29,15 +29,11 @@ jobs:
         # licence key for organisation repos.
         run: node_modules/.bin/gitleaks detect --source . --redact --no-banner -v
 
-      - name: Audit the shipped dependencies
-        # Nothing here ships to a consumer, so this must always be clean.
-        run: npm audit --omit=dev --audit-level=low
-
-      - name: Audit every dependency, dev included
-        # Fails on any advisory outside the documented exemptions, which
-        # live inside the npm package that @semantic-release/npm bundles and
-        # cannot be reached from here. See scripts/audit.mjs.
-        run: npm run audit
+      - name: Audit dependencies
+        # Every dependency, dev included. The package has no runtime
+        # dependencies, and the release tooling is not installed here (see the
+        # publish workflow), so any advisory at all is a real one.
+        run: npm audit --audit-level=low
 
       - name: Lint
         run: npm run lint
