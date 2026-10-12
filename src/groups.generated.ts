@@ -35,5 +35,5 @@ export const GROUPS: readonly GroupDefinition[] = [
   { group: "ds2Functions", label: "DS2 function", kind: 1, count: 136, documented: 136 }
 ]
 
-export const UPSTREAM_REF = "c6092de6cae08fd3f2ab5db543549c9f5685c27c"
+export const UPSTREAM_REF = "e35d0ca2db421ee712fe2ea2d3eee8b3e0c4bef6"
 export const UPSTREAM_SOURCE = "https://github.com/sassoftware/vscode-sas-extension"
