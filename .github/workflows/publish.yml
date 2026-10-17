@@ -4,17 +4,31 @@ name: Publish
 # reads the conventional commits on main, bumps the version, tags the release and
 # writes the GitHub release. Publishing is a separate step, because it uses the
 # npm trusted publisher rather than a token.
+#
+# There is no @semantic-release/git plugin, so the version commit stays local:
+# package.json on main keeps the version it was created with (0.1.0) and the tag
+# alone records what was released. A rejected tag push is therefore recoverable by
+# re-running - there is no release commit on the branch to strand.
 on:
   push:
     branches:
       - main
   workflow_dispatch:
 
+# One release at a time. Both triggers publish, so a dispatched recovery run can
+# interleave with a push-triggered one - two semantic-release processes racing the
+# same tag and the same npm publish. `cancel-in-progress: false` queues the second
+# run rather than cancelling the first, because cancelling a run midway through a
+# release is itself a way to leave a tag pushed and the release missing.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # semantic-release pushes the version commit and the tag
+      contents: write # semantic-release pushes the tag and writes the GitHub release
       id-token: write # npm provenance, through the trusted publisher
       issues: write # lets @semantic-release/github comment on issues
       pull-requests: write # lets @semantic-release/github comment on pull requests
