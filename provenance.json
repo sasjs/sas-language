@@ -1,7 +1,7 @@
 {
   "source": "https://github.com/sassoftware/vscode-sas-extension",
   "license": "Apache-2.0",
-  "upstreamRef": "e35d0ca2db421ee712fe2ea2d3eee8b3e0c4bef6",
+  "upstreamRef": "b225bfd2cf66c861747d701768b21ad20be7e745",
   "generatedBy": "scripts/build.mjs",
   "groups": [
     {
