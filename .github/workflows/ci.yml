@@ -74,6 +74,34 @@ jobs:
             exit 1
           fi
 
+  # A refresh pull request exists to change the language data. One that only
+  # moves the upstream pin has nothing for a reviewer to act on - the vocabulary
+  # is byte-identical - and the next scheduled refresh would move the same pin
+  # again. The refresh workflow no longer opens one; this is the guard for a pull
+  # request opened by hand.
+  #
+  # It fails only in that case: a pull request that leaves the pin alone passes,
+  # whatever it changes, so CI, docs and grammar work are untouched.
+  language-change:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The comparison reads the base commit's artefacts.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: A pin move must bring language data with it
+        run: |
+          git fetch --quiet origin "${{ github.base_ref }}"
+          node scripts/detect-language-change.mjs \
+            --ref "origin/${{ github.base_ref }}" \
+            --fail-on-pin-only
+
   # The language server is compiled from upstream source, which makes it the one
   # slow step in the package. It runs only when its inputs differ from the base,
   # so a data-only pull request stays fast, while a change to the build or the

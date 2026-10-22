@@ -41,14 +41,13 @@ jobs:
           node scripts/summarise-refresh.mjs > /tmp/refresh-body.md
           cat /tmp/refresh-body.md
 
-      - name: Detect a change
+      - name: Detect a language change
         id: diff
-        run: |
-          if [ -z "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
+        # A refresh that only moves the upstream pin has nothing for a reviewer
+        # to look at: the data is byte-identical apart from the sha, and the next
+        # run would move the same pin again. `git status` alone cannot tell the
+        # difference, because the pin move IS a change to those three files.
+        run: node scripts/detect-language-change.mjs --ref HEAD
 
       - name: Open a pull request
         if: steps.diff.outputs.changed == 'true'
@@ -73,7 +72,7 @@ jobs:
 
       - name: Report no change
         if: steps.diff.outputs.changed == 'false'
-        run: echo "Upstream data is unchanged; nothing to refresh."
+        run: echo "No language data changed upstream; nothing to refresh."
 
   # Upstream moving is the likeliest thing to break the server build, and this is
   # the only job that looks at the latest upstream commit. It is a separate job so
