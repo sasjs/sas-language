@@ -152,3 +152,69 @@ test('navigation over a log with no issues yields nothing', () => {
   assert.equal(nextIssue([], 0), undefined)
   assert.equal(nextIssue([], 0, 'previous'), undefined)
 })
+
+/**
+ * A corpus drawn from published SAS log-checking tools, so the parser is held
+ * against lines that appear in the literature rather than lines written to suit
+ * it. The ERROR strings and the notable-NOTE vocabulary are taken from
+ * "You've Got E-Mail: Automatic Log Checking via E-Mail Notification"
+ * (SUGI 31, paper 128-31), "Check Please: An Automated Approach to Log
+ * Checking" (MWSUG 2017, paper TT02), "Log Checks Made Easy" (SAS Global Forum
+ * 2012, paper 042-2012) and the log viewer of the SAS extension for VS Code.
+ */
+const PUBLISHED = [
+  'ERROR: DDE session not ready.',
+  'ERROR: Physical file does not exist, Data.xls',
+  'ERROR: File not found.',
+  'WARNING: Apparent symbolic reference MACNAME not resolved.',
+  'NOTE: MERGE statement has more than one data set with repeats of BY values.',
+  'NOTE: Invalid data for age in line 42 3-5.',
+  'NOTE: Variable x is uninitialized.',
+  'NOTE: At least one W.D format was too small for the number to be printed.',
+  'INFO: The variable y on data set WORK.A will be overwritten by data set WORK.B.',
+  'ERROR: The following columns were not found in the contributing tables: amount.',
+  'WARNING: The data set WORK.OUT may be incomplete. When this step was stopped there were 0 observations.',
+  ''
+].join('\n')
+
+test('reports the errors and warnings of a published log-checker corpus', () => {
+  const issues = parseLog(PUBLISHED)
+
+  assert.deepEqual(
+    issues.map((issue) => [issue.line, issue.severity, issue.message]),
+    [
+      [0, 'error', 'DDE session not ready.'],
+      [1, 'error', 'Physical file does not exist, Data.xls'],
+      [2, 'error', 'File not found.'],
+      [3, 'warning', 'Apparent symbolic reference MACNAME not resolved.'],
+      [9, 'error', 'The following columns were not found in the contributing tables: amount.'],
+      [
+        10,
+        'warning',
+        'The data set WORK.OUT may be incomplete. When this step was stopped there were 0 observations.'
+      ]
+    ]
+  )
+})
+
+test('leaves the notable notes those tools chase out of the issue list', () => {
+  const issues = parseLog(PUBLISHED)
+
+  // The vocabulary every log checker in the literature greps for: uninitialized
+  // variables, invalid data, too-small W.D formats, repeats of BY values. They
+  // are notes, so they are not issues here - the caller sees the ERROR and the
+  // WARNING and nothing else.
+  const reported = issues.map((issue) => issue.message).join(' ')
+
+  assert.equal(reported.includes('uninitialized'), false)
+  assert.equal(reported.includes('Invalid data'), false)
+  assert.equal(reported.includes('repeats of BY values'), false)
+  assert.equal(reported.includes('W.D format'), false)
+  assert.equal(reported.includes('will be overwritten'), false)
+})
+
+test('does not report a marker quoted inside another message', () => {
+  const log = 'NOTE: The previous step wrote ERROR: File not found. - see the documentation.\n'
+
+  assert.deepEqual(parseLog(log), [])
+})

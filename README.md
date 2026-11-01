@@ -110,7 +110,11 @@ What the parser recognises, and what it does not:
 
 - `ERROR` and `WARNING`, with or without a message code such as `22-322`.
 - `NOTE` and `INFO` are not issues. A log carries thousands of them and none is
-  what a reader is looking for.
+  what a reader is looking for. That includes the notes the log-checking
+  literature does chase - uninitialized variables, invalid data, a W.D format
+  too small, repeats of BY values, values converted to another type - because
+  which of those matter is a project's decision, not a parser's; a host that
+  wants them can match the strings itself.
 - Lines SAS wrapped are folded into the message they belong to, so one problem is
   one issue rather than one issue per wrapped line.
 - The marker has to start the line. A data set printed to the log, or a message
