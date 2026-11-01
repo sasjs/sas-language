@@ -82,6 +82,7 @@ wants are the ones SAS starts a line with:
 ERROR: File WORK.MISSING_DS.DATA does not exist.
 ERROR 22-322: Syntax error, expecting one of the following: ;, CANCEL,
               RUN, QUIT.
+NOTE: Variable x is uninitialized.
 ```
 
 `parseLog` finds them and reports where they are. It does not touch the text it is
@@ -109,14 +110,18 @@ the issues as diagnostics and decorations in a `.log` file.
 What the parser recognises, and what it does not:
 
 - `ERROR` and `WARNING`, with or without a message code such as `22-322`.
-- `NOTE` and `INFO` are not issues. A log carries thousands of them and none is
-  what a reader is looking for. That includes the notes the log-checking
-  literature does chase - uninitialized variables, invalid data, a W.D format
-  too small, repeats of BY values, values converted to another type - because
-  which of those matter is a project's decision, not a parser's; a host that
-  wants them can match the strings itself.
+- **Notable notes**: a `NOTE` whose message is one of a closed list of things
+  that go wrong quietly - an uninitialized variable, invalid data, a W.D format
+  too small for the number, a value silently converted to another type, repeats
+  of BY values in a merge, a format not found, and the rest of `NOTE_KEYWORDS` in
+  `src/logs.ts`. They are reported with severity `note`.
+- Ordinary notes and `INFO` lines are not issues. A log carries thousands of
+  "19 observations read from the data set" notes and none of them is what a
+  reader is looking for, which is why the notable list is a closed one rather
+  than "any note". Adding a keyword is how the scope grows.
 - Lines SAS wrapped are folded into the message they belong to, so one problem is
-  one issue rather than one issue per wrapped line.
+  one issue rather than one issue per wrapped line, and a notable note whose
+  keyword lands on the second line is still found.
 - The marker has to start the line. A data set printed to the log, or a message
   quoting another log, does not produce an issue.
 - An ODS HTML log is read as-is: markup before the marker is skipped and stripped

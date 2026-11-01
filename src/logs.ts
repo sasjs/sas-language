@@ -20,10 +20,17 @@
  * The numeric code between the marker and the colon is SAS's own message
  * identifier and is reported separately, so a host can group by it.
  *
- * NOTE and INFO lines are not issues: a log carries thousands of them and they
- * are not what a reader is looking for. Lines SAS wrapped are folded into the
- * message they belong to, so one problem is one issue rather than one issue per
- * wrapped line. Lines that merely contain the word ERROR are not matched - the
+ * NOTES are reported only when they are the ones the log-checking literature
+ * flags: an uninitialized variable, invalid data, a W.D format too small,
+ * values converted to another type, repeats of BY values, and the rest of the
+ * list in NOTE_KEYWORDS below. A log carries thousands of ordinary notes and
+ * none of them is what a reader is looking for, so the vocabulary is a closed
+ * list rather than "any NOTE". INFO lines are not reported at all.
+ *
+ * Lines SAS wrapped are folded into the message they belong to, so one problem
+ * is one issue rather than one issue per wrapped line, and the keyword search
+ * runs on the folded message - a note whose keyword lands on the second line is
+ * still found. Lines that merely contain the word ERROR are not matched: the
  * marker has to start the line, which keeps a print of a data set, or a message
  * quoting another log, out of the results.
  *
@@ -33,8 +40,11 @@
  * the text as supplied, because they are what the caller needs to address.
  */
 
-/** The severities a log issue can carry. Notes and info are not issues. */
-export type LogSeverity = 'error' | 'warning'
+/**
+ * The severities a log issue can carry. `note` is only ever a notable note - see
+ * NOTE_KEYWORDS - never an ordinary one.
+ */
+export type LogSeverity = 'error' | 'warning' | 'note'
 
 /** One ERROR or WARNING in a SAS log, addressed in the text it was parsed from. */
 export interface LogIssue {
@@ -58,11 +68,67 @@ export interface LogIssue {
 export type IssueDirection = 'next' | 'previous'
 
 /**
- * `ERROR` or `WARNING` at the start of a line, optionally preceded by the tags
- * of an HTML log, optionally followed by SAS's message identifier, then a colon.
- * The prefix is captured so the marker's column is exact even when tags lead it.
+ * `ERROR`, `WARNING` or `NOTE` at the start of a line, optionally preceded by
+ * the tags of an HTML log, optionally followed by SAS's message identifier,
+ * then a colon. The prefix is captured so the marker's column is exact even when
+ * tags lead it.
  */
-const MARKER = /^((?:<[^>]*>)*\s*)(ERROR|WARNING)(?:\s+(\d+-\d+))?:[ \t]?(.*)$/i
+const MARKER = /^((?:<[^>]*>)*\s*)(ERROR|WARNING|NOTE)(?:\s+(\d+-\d+))?:[ \t]?(.*)$/i
+
+/**
+ * The notes worth reporting, matched case-insensitively against the folded
+ * message. Each is a message SAS prints when something has gone wrong quietly -
+ * a variable never set, a row that failed input, a value silently converted, a
+ * format too small to hold a number - and each is chased by the log checkers
+ * published in the SAS user-group papers: "Log Checks Made Easy" (SAS Global
+ * Forum 2012, 042-2012), "Check Please: An Automated Approach to Log Checking"
+ * (MWSUG 2017, TT02), "You've Got E-Mail: Automatic Log Checking via E-Mail
+ * Notification" (SUGI 31, 128-31) and the note table behind SASLogChecker.
+ *
+ * Adding a keyword widens what every host reports, so the list is deliberately
+ * short: a message belongs here when a reviewer would want to see it even though
+ * SAS called it a note.
+ */
+const NOTE_KEYWORDS = [
+  'is uninitialized',
+  'Missing values were generated',
+  'Division by zero',
+  'Mathematical operations could not be performed',
+  'Invalid data',
+  'Invalid argument',
+  'Invalid third argument',
+  'have been converted to',
+  'The meaning of an identifier',
+  'too small for',
+  'Unreferenced label',
+  'WHERE clause has been replaced',
+  'stopped due to looping',
+  'will be overwritten by data set',
+  'repeats of BY values',
+  'was not found',
+  'reached past the end of a line',
+  'LOST CARD',
+  'NOEXEC',
+  'A CASE expression has no ELSE clause',
+  'have been thinned',
+  'discarded because neither',
+  'Processing on disk occurred during summarization',
+  'log axis cannot support',
+  'lines were truncated',
+  'outside the axis range',
+  'infinite likelihood',
+  'not positive definite',
+  'The SAS System stopped processing this step because of errors'
+]
+
+const NOTABLE_NOTE_KEYWORDS = NOTE_KEYWORDS.map((keyword) => keyword.toLowerCase())
+
+/** Whether a note's message is one of the notable ones. */
+const isNotableNote = (message: string): boolean => {
+  const lower = message.toLowerCase()
+
+  return NOTABLE_NOTE_KEYWORDS.some((keyword) => lower.includes(keyword))
+}
 
 /** How many wrapped lines one message may absorb, so a malformed log cannot run away. */
 const MAX_WRAPPED_LINES = 10
@@ -100,8 +166,9 @@ export const parseLog = (text: string): LogIssue[] => {
       continue
     }
 
+    const markerLine = line
     const parts = [clean(match[4] ?? '')]
-    let endLine = line
+    let endLine = markerLine
     let wrapped = 0
 
     while (
@@ -114,19 +181,28 @@ export const parseLog = (text: string): LogIssue[] => {
       parts.push(clean(lines[endLine]))
     }
 
+    const severity = match[2].toLowerCase() as LogSeverity
+    const message = parts.filter((part) => part !== '').join(' ')
+
+    // The wrapped lines belong to this message whether or not it is reported, so
+    // the scan resumes after them either way.
+    line = endLine
+
+    if (severity === 'note' && !isNotableNote(message)) {
+      continue
+    }
+
     const code = match[3]
 
     issues.push({
-      line,
+      line: markerLine,
       endLine,
       column: match[1].length,
-      endColumn: lines[line].length,
-      severity: match[2].toLowerCase() as LogSeverity,
+      endColumn: lines[markerLine].length,
+      severity,
       ...(code ? { code } : {}),
-      message: parts.filter((part) => part !== '').join(' ')
+      message
     })
-
-    line = endLine
   }
 
   return issues

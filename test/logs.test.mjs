@@ -43,8 +43,15 @@ test('a log with nothing to report has no issues', () => {
   assert.deepEqual(parseLog(log), [])
 })
 
-test('notes and info are not issues', () => {
-  const log = 'NOTE: Nothing to see.\nINFO: The variable y will be overwritten.\n'
+test('ordinary notes and info are not issues', () => {
+  const log = [
+    'NOTE: There were 19 observations read from the data set SASHELP.CLASS.',
+    'NOTE: The data set WORK.WANT has 19 observations and 5 variables.',
+    'NOTE: DATA statement used (Total process time):',
+    'INFO: The variable y on data set WORK.A will be overwritten.',
+    ''
+  ].join('\n')
+
   assert.deepEqual(parseLog(log), [])
 })
 
@@ -177,7 +184,7 @@ const PUBLISHED = [
   ''
 ].join('\n')
 
-test('reports the errors and warnings of a published log-checker corpus', () => {
+test('reports the errors, warnings and notable notes of a published corpus', () => {
   const issues = parseLog(PUBLISHED)
 
   assert.deepEqual(
@@ -187,6 +194,10 @@ test('reports the errors and warnings of a published log-checker corpus', () => 
       [1, 'error', 'Physical file does not exist, Data.xls'],
       [2, 'error', 'File not found.'],
       [3, 'warning', 'Apparent symbolic reference MACNAME not resolved.'],
+      [4, 'note', 'MERGE statement has more than one data set with repeats of BY values.'],
+      [5, 'note', 'Invalid data for age in line 42 3-5.'],
+      [6, 'note', 'Variable x is uninitialized.'],
+      [7, 'note', 'At least one W.D format was too small for the number to be printed.'],
       [9, 'error', 'The following columns were not found in the contributing tables: amount.'],
       [
         10,
@@ -197,20 +208,66 @@ test('reports the errors and warnings of a published log-checker corpus', () => 
   )
 })
 
-test('leaves the notable notes those tools chase out of the issue list', () => {
+test('leaves the ordinary notes of that corpus alone', () => {
+  // The INFO line in the fixture is the one a reader can ignore: MSGLEVEL=I
+  // reports overwritten variables as information, and no keyword matches it.
   const issues = parseLog(PUBLISHED)
 
-  // The vocabulary every log checker in the literature greps for: uninitialized
-  // variables, invalid data, too-small W.D formats, repeats of BY values. They
-  // are notes, so they are not issues here - the caller sees the ERROR and the
-  // WARNING and nothing else.
-  const reported = issues.map((issue) => issue.message).join(' ')
+  assert.equal(
+    issues.some((issue) => issue.message.includes('will be overwritten')),
+    false
+  )
+})
 
-  assert.equal(reported.includes('uninitialized'), false)
-  assert.equal(reported.includes('Invalid data'), false)
-  assert.equal(reported.includes('repeats of BY values'), false)
-  assert.equal(reported.includes('W.D format'), false)
-  assert.equal(reported.includes('will be overwritten'), false)
+test('reports each notable note as a note, not as a warning', () => {
+  const log = [
+    'NOTE: Missing values were generated as a result of performing an operation on missing values.',
+    'NOTE: Division by zero detected at line 11 column 5.',
+    'NOTE: Mathematical operations could not be performed at the following places.',
+    'NOTE: Character values have been converted to numeric values.',
+    'NOTE: The meaning of an identifier after a quoted string might change.',
+    'NOTE: Unreferenced label defined: y.',
+    'NOTE: WHERE clause has been replaced.',
+    'NOTE: DATA STEP stopped due to looping.',
+    'NOTE: The file WORK.X was not found.',
+    'NOTE: SAS went to a new line when INPUT statement reached past the end of a line.',
+    'NOTE: LOST CARD.',
+    'NOTE: Statement not executed due to NOEXEC option.',
+    'NOTE: A CASE expression has no ELSE clause.',
+    'NOTE: Some of the tick values have been thinned.',
+    'NOTE: A GROUP BY clause has been discarded because neither the SELECT clause',
+    'NOTE: Processing on disk occurred during summarization.',
+    'NOTE: The log axis cannot support zero or negative values.',
+    'NOTE: One or more lines were truncated.',
+    'NOTE: The SAS System stopped processing this step because of errors.',
+    ''
+  ].join('\n')
+
+  const issues = parseLog(log)
+
+  assert.equal(issues.length, 19)
+  assert.deepEqual(
+    issues.map((issue) => issue.severity),
+    new Array(19).fill('note')
+  )
+})
+
+test('finds a notable note whose keyword lands on a wrapped line', () => {
+  const log = [
+    'NOTE: Character values have been converted',
+    '      to numeric values at the places given by: (Line):(Column).',
+    ''
+  ].join('\n')
+
+  const [note] = parseLog(log)
+
+  assert.equal(note.severity, 'note')
+  assert.equal(note.line, 0)
+  assert.equal(note.endLine, 1)
+  assert.equal(
+    note.message,
+    'Character values have been converted to numeric values at the places given by: (Line):(Column).'
+  )
 })
 
 test('does not report a marker quoted inside another message', () => {
