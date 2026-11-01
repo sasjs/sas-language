@@ -13,12 +13,15 @@
  * a stale entry is invisible in a passing build, and a list that only warns
  * drifts out of step with the tree it describes.
  *
- * The list is short because the locked npm is current: npm 11.21.1 vendors
- * fixed brace-expansion, http-cache-semantics, postcss-selector-parser and
- * undici, so the advisories against those do not appear. A lockfile that pinned
- * npm back would bring them back, and they would fail this gate until they are
- * listed again. The ip-address advisory published after that npm release does
- * appear - npm vendors the affected version - and is exempted below.
+ * Every entry below sits inside the tree npm 11.21.1 bundles, which
+ * @semantic-release/npm resolves from its npm ^11.6.2 range. A bundled tree is
+ * a set of files inside npm's own tarball: `overrides` cannot reach it, and the
+ * measurement that matters is the newest npm, which 12.2.1 is - it still ships
+ * undici 6.29.0, glob 13.0.6 and minimatch 10.2.5, so no bump available to this
+ * repo clears them. The undici advisories against the copy resolved OUTSIDE
+ * npm's tarball are not exempt, because those were fixable and were fixed:
+ * `npm update --package-lock-only` moved undici to 7.30.1 for
+ * @semantic-release/github and to 6.29.1 under @actions/http-client.
  *
  * Every exemption carries its own argument - where the affected code sits,
  * whether this repo's release path runs it, and whose input reaches it. An
@@ -41,14 +44,40 @@ import { fileURLToPath } from 'node:url'
 
 const releaseDir = dirname(fileURLToPath(import.meta.url))
 
+/** An entry for a package inside npm's own bundled tree, with what makes it reachable or not. */
+const bundled = (packageAndVersion, reach) =>
+  `${packageAndVersion}, bundled inside npm 11.21.1, which @semantic-release/npm resolves from its npm ^11.6.2 range. A bundled tree cannot be reached by \`overrides\`, and npm 12.2.1 - the newest release - still bundles this version, so no bump available to this repo clears it. ${reach}`
+
+/** npm's own copy of a package, reached only through npm's requests, not this repo's code. */
+const npmRequestPath = (packageAndVersion) =>
+  bundled(
+    packageAndVersion,
+    "RISK ACCEPTANCE, not unreachability: the affected code is npm's, and the only way this repo reaches it is through npm's own registry requests during publish. The exposure is a stalled or failed publish job; the toolchain is not shipped, so nothing a package consumer runs is affected."
+  )
+
 /**
  * Advisories in the release toolchain that cannot be fixed from this repo, and why.
  */
 const EXEMPT = new Map([
   [
-    'GHSA-vfj7-8cjw-p6xm',
-    "braces 3.0.3, reached via semantic-release -> micromatch. Affected through 3.0.3, which is the latest release, so no bump clears it. NOT REACHABLE HERE: the stack exhaustion needs a deeply nested brace PATTERN, and the patterns the release flow matches against come from this repo's own release config (branch globs and releaseRules), not from the commits being matched."
+    'GHSA-3g3m-2fjr-6pw4',
+    bundled(
+      'glob 13.0.6',
+      "NOT REACHABLE HERE: the cancellation bypass needs a caller that aborts a glob mid-walk against an attacker-chosen pattern, and the patterns the release flow matches against come from this repo's own release config (branch globs and releaseRules), not from the commits being matched."
+    )
   ],
+  [
+    'GHSA-g3hv-75wg-m249',
+    bundled(
+      'minimatch 10.2.5',
+      "NOT REACHABLE HERE: the amplification needs an attacker-chosen pattern to expand, and the patterns the release flow matches against come from this repo's own release config (branch globs and releaseRules), not from the commits being matched."
+    )
+  ],
+  ['GHSA-4qv8-2p9j-2685', npmRequestPath('undici 6.29.0')],
+  ['GHSA-xjj6-f33q-929c', npmRequestPath('undici 6.29.0')],
+  ['GHSA-2m5v-pch6-74hx', npmRequestPath('undici 6.29.0')],
+  ['GHSA-qrxm-fqhp-jwvm', npmRequestPath('undici 6.29.0')],
+  ['GHSA-9fm3-97px-rjf6', npmRequestPath('undici 6.29.0')],
   [
     'GHSA-rxp7-6hxx-x8q5',
     'ip-address 10.7.2, bundled inside npm 11.21.1, which @semantic-release/npm resolves from its npm ^11.6.2 range. 11.21.1 is the newest 11.x, and the version npm bundles cannot be overridden from here - adding `overrides` for ip-address to release/package.json leaves the lockfile at 10.7.2, which was measured. RISK ACCEPTANCE, not unreachability: the parse runs only on a proxy address that carries an Address6 zone identifier; the exposure is a stall during publish, and that string can arrive from standard npm proxy configuration (`npm_config_proxy`, `HTTPS_PROXY`), so the input path is reachable and the accepted risk is a publish-time stall rather than a package-supplied one. No bump in this repo moves it - forcing npm 12.2.1 inside the toolchain was measured too, and the lockfile still resolves ip-address 10.7.2 through socks 2.8.9. It clears only when npm ships ip-address >= 10.7.4 in its own bundled tree; the advisory then disappears and this entry fails the gate until it is deleted.'

@@ -1,7 +1,7 @@
 {
   "name": "@sasjs/sas-language",
   "version": "0.1.0",
-  "description": "SAS language data for editors: completions, hover documentation and signatures, resolved from the SAS extension for VS Code",
+  "description": "SAS language data for editors: completions, hover documentation and signatures resolved from the SAS extension for VS Code, plus SAS log parsing",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,10 @@
     "./groups": {
       "types": "./dist/groups.d.ts",
       "default": "./dist/groups.js"
+    },
+    "./logs": {
+      "types": "./dist/logs.d.ts",
+      "default": "./dist/logs.js"
     },
     "./data/*": "./data/*",
     "./server/browser": "./server/browser/server.js",
