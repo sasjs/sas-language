@@ -32,6 +32,9 @@
     "README.md"
   ],
   "sideEffects": false,
+  "dependencies": {
+    "@sasjs/utils": "^4.2.0"
+  },
   "release": {
     "branches": [
       "main"
