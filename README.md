@@ -1,19 +1,20 @@
 # SAS language support for editors
 
-`@sasjs/sas-language` provides SAS language support in two forms, from one
-upstream source and one pinned commit:
+`@sasjs/sas-language` provides SAS language support in three forms:
 
     data/      the vocabulary: completions, hover documentation, signatures
     server/    the SAS language server, compiled from upstream source
+    logs       the log parser, as `./logs`
 
-Both are resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
+The data and the server are resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
 and refreshed on a schedule, so this package owns the language support rather than
-depending on an installed editor extension.
+depending on an installed editor extension. The log parser is written here.
 
 The data is small, has no runtime dependencies and uses no Node built-ins, so it
 runs unchanged in a browser, in Node and in an editor extension. The server is the
 full language service - semantic tokens, diagnostics, context-aware completions -
-and is what an editor that wants a real parser loads.
+and is what an editor that wants a real parser loads. The log parser has the same
+constraints as the data: pure functions, no runtime dependencies, no Node built-ins.
 
 ## Why this exists
 
@@ -71,6 +72,51 @@ const doc = docsFor(docs, 'abs')
 
 Every group is a separate path, so a bundler emits only the groups you import and
 the documentation as its own chunk.
+
+## SAS log parsing
+
+A SAS log is one long stream of statements and messages, and the messages a reader
+wants are the ones SAS starts a line with:
+
+```
+ERROR: File WORK.MISSING_DS.DATA does not exist.
+ERROR 22-322: Syntax error, expecting one of the following: ;, CANCEL,
+              RUN, QUIT.
+```
+
+`parseLog` finds them and reports where they are. It does not touch the text it is
+given: it returns a list, and each entry carries the line and column of the marker,
+the last line of the message, the severity, SAS's message code where there is one,
+and the message itself.
+
+```ts
+import { parseLog, nextIssue } from '@sasjs/sas-language/logs'
+
+const issues = parseLog(logText)
+// [{ line: 12, endLine: 13, column: 0, endColumn: 53,
+//    severity: 'error', code: '22-322', message: 'Syntax error, ...' }]
+
+// The issue after line 12, wrapping to the first one at the end of the log
+const next = nextIssue(issues, 12)
+```
+
+Leaving the text alone is the point: a host underlines the log where it already is,
+and the same list drives a list of problems, a count for a tab, and a report. The
+parser is pure and browser-safe, so a host is free to be an editor or a web page:
+the [SASjs VS Code extension](https://github.com/sasjs/vscode-extension) publishes
+the issues as diagnostics and decorations in a `.log` file.
+
+What the parser recognises, and what it does not:
+
+- `ERROR` and `WARNING`, with or without a message code such as `22-322`.
+- `NOTE` and `INFO` are not issues. A log carries thousands of them and none is
+  what a reader is looking for.
+- Lines SAS wrapped are folded into the message they belong to, so one problem is
+  one issue rather than one issue per wrapped line.
+- The marker has to start the line. A data set printed to the log, or a message
+  quoting another log, does not produce an issue.
+- An ODS HTML log is read as-is: markup before the marker is skipped and stripped
+  from the message, and the reported columns still address the text as supplied.
 
 ## The language server
 
