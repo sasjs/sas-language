@@ -4,11 +4,12 @@
 
     data/      the vocabulary: completions, hover documentation, signatures
     server/    the SAS language server, compiled from upstream source
-    logs       the log parser, as `./logs`
+    logs       the log parser, as `./logs` (re-exported from `@sasjs/utils`)
 
 The data and the server are resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
 and refreshed on a schedule, so this package owns the language support rather than
-depending on an installed editor extension. The log parser is written here.
+depending on an installed editor extension. The log parser is implemented in
+`@sasjs/utils` and re-exported here - see below.
 
 The data is small, has no runtime dependencies and uses no Node built-ins, so it
 runs unchanged in a browser, in Node and in an editor extension. The server is the
@@ -35,9 +36,9 @@ npm install @sasjs/sas-language
 ```
 
 The registry tarball ships the compiled output, so nothing is built on install. It
-is 12 MB compressed and 5,208 files, carrying the data, both language-server
-builds and the log parser. Only `dist/logs.js` matters to a consumer that wants
-the parser alone - 7 KB, 3 KB gzipped - but it arrives inside the whole tarball.
+is 12 MB compressed and 5,208 files, carrying the data and both language-server
+builds. A consumer that wants only the log parser should take
+`@sasjs/utils/logs` instead, which is 7 KB of code in a 0.77 MB package.
 
 A git install also works, but needs lifecycle scripts enabled, because the build
 output is not committed and `prepare` compiles it. A git install does not build the
@@ -87,10 +88,10 @@ ERROR 22-322: Syntax error, expecting one of the following: ;, CANCEL,
 NOTE: Variable x is uninitialized.
 ```
 
-`parseLog` finds them and reports where they are. It does not touch the text it is
-given: it returns a list, and each entry carries the line and column of the marker,
-the last line of the message, the severity, SAS's message code where there is one,
-and the message itself.
+`parseLog` finds them and reports where they are: the line and column of the
+marker, the last line of a wrapped message, the severity, SAS's message code
+where there is one, and the message itself. It never rewrites the log, so a host
+underlines the text where it already is.
 
 ```ts
 import { parseLog, nextIssue } from '@sasjs/sas-language/logs'
@@ -103,31 +104,20 @@ const issues = parseLog(logText)
 const next = nextIssue(issues, 12)
 ```
 
-Leaving the text alone is the point: a host underlines the log where it already is,
-and the same list drives a list of problems, a count for a tab, and a report. The
-parser is pure and browser-safe, so a host is free to be an editor or a web page:
-the [SASjs VS Code extension](https://github.com/sasjs/vscode-extension) publishes
-the issues as diagnostics and decorations in a `.log` file.
+The implementation lives in [`@sasjs/utils/logs`](https://github.com/sasjs/utils),
+which is where a host should take it from: every consumer in the organisation
+already depends on `@sasjs/utils`, and a log parser is SAS knowledge rather than
+editor wiring. This entry point exists for the hosts that load this package and
+nothing else - the Studio's web app depends on `@sasjs/sas-language` for
+completions and hover text and has no `@sasjs/utils` of its own - so the published
+import keeps working and there is one implementation. The rules, the notable-note
+vocabulary and how it is tested are documented there.
 
-What the parser recognises, and what it does not:
-
-- `ERROR` and `WARNING`, with or without a message code such as `22-322`.
-- **Notable notes**: a `NOTE` whose message is one of a closed list of things
-  that go wrong quietly - an uninitialized variable, invalid data, a W.D format
-  too small for the number, a value silently converted to another type, repeats
-  of BY values in a merge, a format not found, and the rest of `NOTE_KEYWORDS` in
-  `src/logs.ts`. They are reported with severity `note`.
-- Ordinary notes and `INFO` lines are not issues. A log carries thousands of
-  "19 observations read from the data set" notes and none of them is what a
-  reader is looking for, which is why the notable list is a closed one rather
-  than "any note". Adding a keyword is how the scope grows.
-- Lines SAS wrapped are folded into the message they belong to, so one problem is
-  one issue rather than one issue per wrapped line, and a notable note whose
-  keyword lands on the second line is still found.
-- The marker has to start the line. A data set printed to the log, or a message
-  quoting another log, does not produce an issue.
-- An ODS HTML log is read as-is: markup before the marker is skipped and stripped
-  from the message, and the reported columns still address the text as supplied.
+What it recognises, in short: `ERROR` and `WARNING` with or without a message
+code; `NOTE` only when the message matches the closed notable list (uninitialized
+variables, invalid data, a W.D format too small, values converted to another
+type, repeats of BY values, and so on); wrapped lines folded into one issue; ODS
+HTML markup skipped and stripped. Ordinary notes and `INFO` lines are not issues.
 
 ## The language server
 
