@@ -35,7 +35,9 @@ npm install @sasjs/sas-language
 ```
 
 The registry tarball ships the compiled output, so nothing is built on install. It
-is roughly 6 MB compressed, carrying both the data and both server builds.
+is 12 MB compressed and 5,208 files, carrying the data, both language-server
+builds and the log parser. Only `dist/logs.js` matters to a consumer that wants
+the parser alone - 7 KB, 3 KB gzipped - but it arrives inside the whole tarball.
 
 A git install also works, but needs lifecycle scripts enabled, because the build
 output is not committed and `prepare` compiles it. A git install does not build the
