@@ -1,21 +1,18 @@
 # SAS language support for editors
 
-`@sasjs/sas-language` provides SAS language support in three forms:
+`@sasjs/sas-language` provides SAS language support in two forms:
 
     data/      the vocabulary: completions, hover documentation, signatures
     server/    the SAS language server, compiled from upstream source
-    logs       the log parser, as `./logs` (re-exported from `@sasjs/utils`)
 
-The data and the server are resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
+Both are resolved from the [SAS extension for Visual Studio Code](https://github.com/sassoftware/vscode-sas-extension)
 and refreshed on a schedule, so this package owns the language support rather than
-depending on an installed editor extension. The log parser is implemented in
-`@sasjs/utils` and re-exported here - see below.
+depending on an installed editor extension.
 
 The data is small, has no runtime dependencies and uses no Node built-ins, so it
 runs unchanged in a browser, in Node and in an editor extension. The server is the
 full language service - semantic tokens, diagnostics, context-aware completions -
-and is what an editor that wants a real parser loads. The log parser has the same
-constraints as the data: pure functions, no runtime dependencies, no Node built-ins.
+and is what an editor that wants a real parser loads.
 
 ## Why this exists
 
@@ -37,8 +34,7 @@ npm install @sasjs/sas-language
 
 The registry tarball ships the compiled output, so nothing is built on install. It
 is 12 MB compressed and 5,208 files, carrying the data and both language-server
-builds. A consumer that wants only the log parser should take
-`@sasjs/utils/logs` instead, which is 7 KB of code in a 0.77 MB package.
+builds.
 
 A git install also works, but needs lifecycle scripts enabled, because the build
 output is not committed and `prepare` compiles it. A git install does not build the
@@ -75,49 +71,6 @@ const doc = docsFor(docs, 'abs')
 
 Every group is a separate path, so a bundler emits only the groups you import and
 the documentation as its own chunk.
-
-## SAS log parsing
-
-A SAS log is one long stream of statements and messages, and the messages a reader
-wants are the ones SAS starts a line with:
-
-```
-ERROR: File WORK.MISSING_DS.DATA does not exist.
-ERROR 22-322: Syntax error, expecting one of the following: ;, CANCEL,
-              RUN, QUIT.
-NOTE: Variable x is uninitialized.
-```
-
-`parseLog` finds them and reports where they are: the line and column of the
-marker, the last line of a wrapped message, the severity, SAS's message code
-where there is one, and the message itself. It never rewrites the log, so a host
-underlines the text where it already is.
-
-```ts
-import { parseLog, nextIssue } from '@sasjs/sas-language/logs'
-
-const issues = parseLog(logText)
-// [{ line: 12, endLine: 13, column: 0, endColumn: 53,
-//    severity: 'error', code: '22-322', message: 'Syntax error, ...' }]
-
-// The issue after line 12, wrapping to the first one at the end of the log
-const next = nextIssue(issues, 12)
-```
-
-The implementation lives in [`@sasjs/utils/logs`](https://github.com/sasjs/utils),
-which is where a host should take it from: every consumer in the organisation
-already depends on `@sasjs/utils`, and a log parser is SAS knowledge rather than
-editor wiring. This entry point exists for the hosts that load this package and
-nothing else - the Studio's web app depends on `@sasjs/sas-language` for
-completions and hover text and has no `@sasjs/utils` of its own - so the published
-import keeps working and there is one implementation. The rules, the notable-note
-vocabulary and how it is tested are documented there.
-
-What it recognises, in short: `ERROR` and `WARNING` with or without a message
-code; `NOTE` only when the message matches the closed notable list (uninitialized
-variables, invalid data, a W.D format too small, values converted to another
-type, repeats of BY values, and so on); wrapped lines folded into one issue; ODS
-HTML markup skipped and stripped. Ordinary notes and `INFO` lines are not issues.
 
 ## The language server
 
