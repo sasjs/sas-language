@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -123,6 +123,17 @@ run('formatting is idempotent', async () => {
   assert.equal(twice, once)
 })
 
+run('tabWidth is honoured, not just accepted', async () => {
+  // `tabWidth` and `useTabs` are prettier's names and the printer reads them;
+  // this asserts the width as well as the tab character, because a declaration
+  // that let any option through would accept both and prove neither.
+  const input = ['data foo;', 'set bar;', 'run;', ''].join('\n')
+
+  assert.equal((await formatText(input, { tabWidth: 2 })).split('\n')[1], '  set bar;')
+  assert.equal((await formatText(input, { tabWidth: 4 })).split('\n')[1], '    set bar;')
+  assert.equal((await formatText(input, { tabWidth: 8 })).split('\n')[1], '        set bar;')
+})
+
 run('tabs are used when they are asked for', async () => {
   // The option is prettier's `useTabs`, not the LSP's `insertSpaces`: an editor
   // passes the latter and the host maps it, which is why this is asserted here -
@@ -189,6 +200,32 @@ run('two calls started together each see their own root', async () => {
   assert.equal(defaultCall.value, formatted)
 
   await rm(crippled, { recursive: true, force: true })
+})
+
+run('an otherwise complete root missing one procedure file rejects', async () => {
+  // The tree here is the real one with a single symlink left out, which is the
+  // case that settles a question the docs got wrong once: does a missing
+  // procedure file throw, or come back as an unformatted buffer? It throws, and
+  // the message names the file - the assertion is on that name rather than on
+  // "some error", so a failure elsewhere cannot satisfy it.
+  const root = await mkdtemp(path.join(tmpdir(), 'sasjs-format-oneproc-'))
+  await mkdir(path.join(root, 'pubsdata', 'Procedures', 'en'), { recursive: true })
+  for (const entry of ['Statements', 'Functions', 'procedures.json']) {
+    await symlink(path.join(DATA_ROOT, 'pubsdata', entry), path.join(root, 'pubsdata', entry))
+  }
+  await symlink(path.join(DATA_ROOT, 'data'), path.join(root, 'data'))
+  for (const file of await readdir(path.join(DATA_ROOT, 'pubsdata', 'Procedures', 'en'))) {
+    if (file === 'SORT.json') continue
+    await symlink(
+      path.join(DATA_ROOT, 'pubsdata', 'Procedures', 'en', file),
+      path.join(root, 'pubsdata', 'Procedures', 'en', file)
+    )
+  }
+
+  const input = ['proc sort data=work.foo;', 'by age;', 'run;', ''].join('\n')
+  await assert.rejects(() => formatText(input, { dataRoot: root }), /SORT\.json/)
+
+  await rm(root, { recursive: true, force: true })
 })
 
 run('a missing data root fails with the path and the way out', async () => {

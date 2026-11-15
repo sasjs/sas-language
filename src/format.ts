@@ -119,10 +119,11 @@ const installLoader = () => {
   ResLoader.get = (url: string, callback: (data?: unknown) => void) => {
     const relative = url.replace(/^(\.\.[/\\])+/, '')
     const file = join(dataRoot, relative)
-    // The lexer swallows exceptions raised while tokenising, so a failed read
-    // here would surface as an empty result rather than an error. The caller is
-    // told the file is missing instead; `assertDataRoot` catches the common case
-    // before any tokenising starts.
+    // Thrown rather than returned: a read that fails here has to reach the
+    // caller. Measured, because it is not obvious - a buffer whose PROC step
+    // needs a procedure file this root does not have rejects with this message,
+    // naming the file. The server returns no edits in the same situation because
+    // it catches around lexing, which is why the two behave differently.
     let contents: string
     try {
       contents = readFileSync(file, 'utf8')
@@ -206,7 +207,10 @@ export const formatText = (text: string, options: FormatOptions = {}): Promise<s
 
       return applyEdits(text, edits)
     } finally {
-      dataRoot = previous
+      // Only put back what this call set. An overlapping call assigns its own
+      // root and its own `previous`, so restoring unconditionally would leave the
+      // module pinned to whichever call finished first.
+      if (dataRoot === root) dataRoot = previous
     }
   }
 

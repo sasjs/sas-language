@@ -10,9 +10,14 @@
  */
 declare module 'upstream-formatter' {
   export interface FormatOptions {
-    tabSize?: number
-    insertSpaces?: boolean
-    [option: string]: unknown
+    /**
+     * Prettier's own names, because prettier is what reads them. An index
+     * signature used to be here and was worse than useless: it let `tabWidth`
+     * and `useTabs` through without proving upstream reads them, so a wrong name
+     * would have been accepted by `tsc` and ignored by the printer.
+     */
+    tabWidth?: number
+    useTabs?: boolean
   }
 
   export interface TextEdit {
