@@ -1,14 +1,31 @@
+# Publishes @sasjs/sas-language to npm, in steps that each answer one question:
+#
+#   1. gates      secrets, advisories, formatting
+#   2. build      `build:ship`: data + types + server + formatter bundle, in one
+#                 command, so this file cannot fall behind the package's prepack
+#   3. test       both artifact suites run because step 2 built what they need -
+#                 the skip-not-fail shape means testing before building reports
+#                 green while executing neither
+#   4. gate       the data matches its provenance, and the release tool ships no
+#                 dependencies of its own
+#   5. release    @sasjs/release cuts the tag and a draft release from the
+#                 conventional commits, over the API: no commit, no branch push
+#   6. gate       is that tag's release still a draft? (a re-run must finish a
+#                 failed job; a docs-only merge must publish nothing)
+#   7. prepare    --prepare-publish stamps the tag's version into package.json and
+#                 refuses a tag that is not an ancestor of main
+#   8. verify     `verify:pack` derives every promised path from the export map and
+#                 checks the tarball would contain it - hand-written gates drift,
+#                 which is how 0.5.0 shipped without the file `./format` names
+#   9. publish    npm publish with the trusted publisher, then attach the tarball
+#                 to the release and un-draft it so a version is never advertised
+#                 before its artifact exists
+#
+# The filename is load-bearing: the npm trusted publisher and the provenance
+# attestation both name this workflow, so it cannot move to release.yml.
+
 name: Publish
 
-# Publishes @sasjs/sas-language to npm. Versioning is semantic-release's job: it
-# reads the conventional commits on main, bumps the version, tags the release and
-# writes the GitHub release. Publishing is a separate step, because it uses the
-# npm trusted publisher rather than a token.
-#
-# There is no @semantic-release/git plugin, so the version commit stays local:
-# package.json on main keeps the version it was created with (0.1.0) and the tag
-# alone records what was released. A rejected tag push is therefore recoverable by
-# re-running - there is no release commit on the branch to strand.
 on:
   push:
     branches:
@@ -16,46 +33,48 @@ on:
   workflow_dispatch:
 
 # One release at a time. Both triggers publish, so a dispatched recovery run can
-# interleave with a push-triggered one - two semantic-release processes racing the
-# same tag and the same npm publish. `cancel-in-progress: false` queues the second
-# run rather than cancelling the first, because cancelling a run midway through a
-# release is itself a way to leave a tag pushed and the release missing.
+# interleave with a push-triggered one. `cancel-in-progress: false` queues the
+# second run rather than cancelling the first, because cancelling mid-release is
+# itself a way to leave a tag pushed and the release missing.
 concurrency:
   group: publish
   cancel-in-progress: false
+
+# read-only by default; the publish job asks for the two writes it needs
+permissions: read-all
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # semantic-release pushes the tag and writes the GitHub release
-      id-token: write # npm provenance, through the trusted publisher
-      issues: write # lets @semantic-release/github comment on issues
-      pull-requests: write # lets @semantic-release/github comment on pull requests
+      contents: write # the tag, the release, and the tarball attached to it
+      id-token: write # npm provenance through the trusted publisher
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # semantic-release needs the full history and the tags
+          fetch-depth: 0 # the release tool reads commits and tags to pick the level
+          ref: main
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      # Node 22 ships npm 10.x, and the trusted publisher needs npm >= 11.5.1.
-      # The major is pinned rather than tracking @latest, so a release does not
-      # adopt a new npm major on its own: npm 12 parses `npm run <script> --flag`
+      # Node 22 ships npm 10.x and the trusted publisher needs npm >= 11.5.1. The
+      # major is pinned rather than tracking @latest, so a release does not adopt a
+      # new npm major on its own: npm 12 parses `npm run <script> --flag`
       # differently, and a release is the worst place to find that out. The
-      # upstream build works on both majors, so this is a hedge rather than a
-      # requirement - see patchSubBuildDispatch in scripts/build-server.mjs.
+      # upstream build works on both majors - see patchSubBuildDispatch in
+      # scripts/build-server.mjs.
       - name: Update npm
         run: npm install -g npm@^11
 
       - name: Install dependencies
-        # --ignore-scripts: no install script from any dependency runs. The
-        # gitleaks binary below is a plain devDependency binary and needs no
-        # postinstall.
+        # --ignore-scripts: no install script from any dependency runs, which also
+        # means `prepare` does not build anything. Every artifact is built by name
+        # below, so what ships is what these steps produced.
         run: npm ci --ignore-scripts
 
       # A release is the worst place to discover a leaked credential or a new
@@ -64,31 +83,26 @@ jobs:
         run: node_modules/.bin/gitleaks detect --source . --redact --no-banner -v
 
       - name: Audit dependencies
-        # Every dependency, dev included. The package has no runtime
-        # dependencies, and the release tooling is not installed here, so any
-        # advisory at all is a real one.
         run: npm audit --audit-level=low
 
       - name: Lint
         run: npm run lint
 
-      # The two suites that guard the shipped artifacts skip when those artifacts
-      # are absent - server.test.mjs says so, and format.test.mjs does the same -
-      # so they are built before the tests instead of after them. A green release
-      # run in which the format tests reported "# SKIP" is how a tarball without
-      # the formatter bundle reached npm.
-      - name: Build the artifacts the suites test
-        run: |
-          npm run build:server
-          npm run build:ts
-          npm run build:format
+      # One command for the whole build. Not a list of four steps: the formatter
+      # bundle compiles the upstream source that build:server fetches, so a list
+      # can be reordered or shortened, and both have happened.
+      - name: Build everything the package ships
+        run: npm run build:ship
 
+      # After the build, deliberately. server.test.mjs and format.test.mjs skip
+      # when their artifacts are absent, so a Test step that runs first reports
+      # success having executed neither - which is what the 0.5.0 run did.
       - name: Test
         run: npm test
 
       # Publishing data that does not match the repository would be worse than
       # publishing nothing, so the refresh is replayed and the result compared
-      # before any of this reaches npm.
+      # before anything reaches npm.
       - name: Data is in sync with its provenance
         run: |
           npm run fetch -- --ref "$(node -p "require('./provenance.json').upstreamRef")"
@@ -100,60 +114,130 @@ jobs:
             exit 1
           fi
 
-      - name: Audit the release toolchain
-        # Its own scope: the toolchain is not shipped, so it must not gate the
-        # package, but it runs with publish credentials, so it must not be
-        # invisible either. Fails on anything outside the named exemptions in
-        # release/audit.mjs.
-        run: node release/audit.mjs
-
-      - name: Install the release tooling
-        # Its own locked tree, installed here rather than carried as a
-        # devDependency: that tree is where the unfixable advisories live, so
-        # keeping it out of the package's dependencies keeps it out of the
-        # package's `npm audit`. Locked, so the resolved versions and their
-        # integrity hashes are pinned rather than fetched fresh at release time.
-        run: npm ci --prefix release --ignore-scripts
-
-      - name: Semantic release
-        run: release/node_modules/.bin/semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # semantic-release only releases when the commits since the last tag call
-      # for one, so on every other push to main the version is already published.
-      # Checking the registry first keeps those runs green instead of failing
-      # with E403, which is what an unconditional publish would do.
-      - name: Publish to npm with the trusted publisher
+      - name: Check the release tool has no dependencies of its own
+        # It runs with `contents: write`, so its tree has to be auditable, and the
+        # property that makes it so is that it ships nothing of its own. Asserted
+        # rather than audited, because `npm audit --omit=dev` cannot see a
+        # devDependency at all.
         run: |
-          version=$(node -p "require('./package.json').version")
+          node -e '
+          const p = require("./node_modules/@sasjs/release/package.json");
+          const deps = Object.keys({
+            ...p.dependencies,
+            ...p.peerDependencies,
+            ...p.optionalDependencies,
+            ...(Array.isArray(p.bundledDependencies) ? Object.fromEntries(p.bundledDependencies.map((n) => [n, 1])) : p.bundledDependencies),
+            ...(Array.isArray(p.bundleDependencies) ? Object.fromEntries(p.bundleDependencies.map((n) => [n, 1])) : p.bundleDependencies)
+          });
+          if (deps.length) {
+            console.error("@sasjs/release " + p.version + " ships dependencies: " + deps.join(", "));
+            process.exit(1);
+          }
+          console.log("@sasjs/release " + p.version + " ships no dependencies");
+          '
 
-          if npm view "@sasjs/sas-language@${version}" version > /dev/null 2>&1; then
-            echo "@sasjs/sas-language@${version} is already published; nothing to do"
-            exit 0
-          fi
+      - name: Tag and release, if there is anything to release
+        id: release
+        # The tag and the release are created over the API: nothing is pushed to
+        # main and no branch protection needs bypassing. `released` is false when
+        # the commits since the last tag are docs/build/chore only.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # --branch is absent on purpose: the tool reads it in --prepare-publish
+        # only, so passing it here would look like a guard while nothing checked
+        # it. The tag is checked against main by the prepare step below.
+        run: npm run release -- --host github --release --draft --output "$GITHUB_OUTPUT"
 
-          # Neither dist/ nor server/ is committed, and .npmrc sets
-          # ignore-scripts=true so the prepack build does not run here. Build
-          # both explicitly rather than relying on an earlier step happening to
-          # leave them on disk.
-          npm run build
-          npm run build:server
-          # The formatter bundle is deliberately not part of `build`: it compiles
-          # the upstream source that build:server has just fetched. Leaving it
-          # out publishes a package whose ./format export names a file the
-          # tarball does not contain.
-          npm run build:format
-
-          # A tarball missing any part of the package is worse than no release at
-          # all, so every path the export map names is checked before anything
-          # reaches npm.
-          for required in dist/index.js dist/format.bundle.js dist/format.d.ts server/browser/server.js server/node/dist/node/server.js server/node/pubsdata server/node/messagebundle.properties; do
-            if [ ! -s "$required" ]; then
-              echo "$required is missing - refusing to publish an incomplete package"
+      - name: Work out whether this run still has something to publish
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A re-run must be able to finish a job that failed half way, and a
+        # docs-only merge must not rebuild the version before it. `released` alone
+        # cannot tell those apart: on a re-run the tag already exists, so the step
+        # above reports released=false and everything below would be skipped,
+        # leaving a draft release with nothing attached.
+        #
+        # `gh release view <tag>` asks /releases/tags/<tag>, which does not return
+        # drafts - the very release this step needs to find. List and match
+        # instead, paginated so a repo with more than one page of releases cannot
+        # read an older tag as having no release at all.
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release.outputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="$(git describe --tags --abbrev=0)"; fi
+          DRAFT="$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+            -q ".[] | select(.tag_name == \"$TAG\") | .draft")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+          case "$DRAFT" in
+            true)
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              echo "$TAG has a draft release: publishing it"
+              ;;
+            false)
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "$TAG is already released: nothing to publish"
+              ;;
+            "")
+              echo "::warning::$TAG has no release: creating the draft the release step did not"
+              gh release create "$TAG" --draft --title "$TAG" --generate-notes --verify-tag
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::unexpected answer for $TAG: '$DRAFT'"
               exit 1
-            fi
-          done
+              ;;
+          esac
 
-          echo "publishing @sasjs/sas-language@${version}"
-          npm publish --access public
+      - name: Decide what to publish
+        id: prepare
+        if: steps.gate.outputs.publish == 'true'
+        # Reads the tag the gate resolved - a draft release has no tag of its own
+        # until it is published - and stamps that version into package.json.
+        # Refuses a tag that is not in this clone or not an ancestor of main.
+        #
+        # The registry lookup stays on here, unlike a package that never ships to
+        # npm: the answer decides whether this run publishes at all, and the
+        # outputs say which (skip / publish / exists).
+        run: npm run release -- --prepare-publish --branch main --tag "${{ steps.gate.outputs.tag }}" --output "$GITHUB_OUTPUT"
+
+      - name: The tarball would contain what the package promises
+        if: steps.gate.outputs.publish == 'true'
+        # Derived from the export map rather than listed here: every entry point
+        # the package advertises, plus the files the node server reads relative to
+        # itself. This is the check that would have stopped 0.5.0, which went to
+        # npm without the file `./format` names.
+        run: npm run verify:pack
+
+      - name: Attach the tarball to the release
+        id: pack
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.gate.outputs.tag }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+        # Packed rather than left to `npm publish`, so the exact artifact that
+        # reaches the registry is the one attached to the release. --ignore-scripts
+        # because everything was built above; a prepack here would rebuild over it.
+        run: |
+          TARBALL="$(npm pack --ignore-scripts --silent)"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          gh release upload "$TAG" "$TARBALL" --clobber
+
+      - name: Publish to npm with the trusted publisher
+        if: steps.gate.outputs.publish == 'true'
+        # The artifact packed and attached above, not a rebuild: `npm publish
+        # <tarball>` publishes the bytes on disk, so the provenance statement
+        # describes what is attached to the release.
+        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
+
+      - name: Publish the release
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.gate.outputs.tag }}
+        # Last: the release is created as a draft, so a version is never advertised
+        # before its tarball exists on the page. Running on the gate rather than on
+        # `released` is what makes a re-run finish a failed job.
+        run: gh release edit "$TAG" --draft=false
