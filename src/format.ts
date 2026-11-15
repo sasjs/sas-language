@@ -72,6 +72,22 @@ export interface FormatOptions {
   useTabs?: boolean
   /** Directory holding `pubsdata/` and `data/`. Defaults to the staged server tree. */
   dataRoot?: string
+  /**
+   * Case to give keywords. Defaults to `preserve`, which is what the printer does
+   * on its own.
+   *
+   * What changes is exactly what the lexer marks as a keyword, secondary keyword,
+   * procedure name or macro keyword - so `if`/`then`/`else`, the statements inside
+   * a procedure, and option names such as `data=` are all included, while strings,
+   * comments and identifiers are not. A name the lexer cannot tell from a keyword
+   * (a DATA step variable called `label`) is cased with it; that is inherent to
+   * matching words rather than parsing them, and it is case-insensitive SAS.
+   *
+   * Upstream's printer has no casing option. When it gains one
+   * (sassoftware/vscode-sas-extension#2177) this pass can be dropped without
+   * changing any caller.
+   */
+  keywordCase?: 'upper' | 'lower' | 'preserve'
 }
 
 /**
@@ -159,6 +175,64 @@ const assertDataRoot = (root: string) => {
   }
 }
 
+/** The token styles the lexer uses for words SAS does not let you spell freely. */
+const KEYWORD_STYLES = new Set([
+  'keyword',
+  'sec-keyword',
+  'proc-name',
+  'macro-keyword',
+  'macro-sec-keyword'
+])
+
+/**
+ * Gives keywords the requested case, using the lexer's own token table.
+ *
+ * A vocabulary of statement names was the first attempt and it was wrong in a way
+ * worth recording: the four statement files carry no `ELSE`, no `THEN` and none of
+ * the statements that belong to a procedure (`VAR`, `CLASS`), so the output came
+ * back half cased - `data` lowercased next to `VAR` untouched. The lexer already
+ * knows: every token carries a style, and the ones above are the words SAS reserves.
+ *
+ * So the printed text is lexed once more - no printing, just the token table - and
+ * the spans it marks are rewritten. Editing from the end of each line backwards
+ * keeps the earlier offsets valid, and a token holding no letters (a semicolon, a
+ * `%` sigil) is skipped rather than cased into nonsense.
+ */
+const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') => {
+  const transform = (word: string) =>
+    keywordCase === 'upper' ? word.toUpperCase() : word.toLowerCase()
+
+  const model = new Model(documentFrom(text))
+  const syntaxProvider = new SyntaxProvider(model)
+  const lastLine = model.getLineCount() - 1
+  syntaxProvider.add({
+    text: '',
+    removedText: '',
+    oldRange: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
+    newRange: {
+      start: { line: 0, column: 0 },
+      end: { line: lastLine, column: model.getColumnCount(lastLine) }
+    }
+  })
+
+  return text
+    .split('\n')
+    .map((line, index) => {
+      const tokens = syntaxProvider.getSyntax(index) ?? []
+      let result = line
+      for (let at = tokens.length - 1; at >= 0; at--) {
+        const token = tokens[at]
+        if (!KEYWORD_STYLES.has(token.style)) continue
+        const end = at === tokens.length - 1 ? line.length : tokens[at + 1].start
+        const word = line.slice(token.start, end)
+        if (!/[A-Za-z]/.test(word)) continue
+        result = result.slice(0, token.start) + transform(word) + result.slice(end)
+      }
+      return result
+    })
+    .join('\n')
+}
+
 /**
  * Formats a SAS program and returns the text.
  *
@@ -205,7 +279,9 @@ export const formatText = (text: string, options: FormatOptions = {}): Promise<s
         useTabs: options.useTabs ?? false
       })
 
-      return applyEdits(text, edits)
+      const formatted = applyEdits(text, edits)
+      const keywordCase = options.keywordCase ?? 'preserve'
+      return keywordCase === 'preserve' ? formatted : applyKeywordCase(formatted, keywordCase)
     } finally {
       // Only put back what this call set. An overlapping call assigns its own
       // root and its own `previous`, so restoring unconditionally would leave the

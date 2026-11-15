@@ -48,6 +48,8 @@ declare module 'upstream-formatter' {
   export class SyntaxProvider {
     constructor(model: Model)
     setTokenCallback(callback: ((token: unknown) => void) | undefined): void
+    /** The token table for one line: a start column and a style per token. */
+    getSyntax(line: number): Array<{ start: number; style: string }>
     add(change: {
       text: string
       removedText: string
