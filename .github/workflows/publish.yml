@@ -72,6 +72,17 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # The two suites that guard the shipped artifacts skip when those artifacts
+      # are absent - server.test.mjs says so, and format.test.mjs does the same -
+      # so they are built before the tests instead of after them. A green release
+      # run in which the format tests reported "# SKIP" is how a tarball without
+      # the formatter bundle reached npm.
+      - name: Build the artifacts the suites test
+        run: |
+          npm run build:server
+          npm run build:ts
+          npm run build:format
+
       - name: Test
         run: npm test
 
@@ -128,11 +139,16 @@ jobs:
           # leave them on disk.
           npm run build
           npm run build:server
+          # The formatter bundle is deliberately not part of `build`: it compiles
+          # the upstream source that build:server has just fetched. Leaving it
+          # out publishes a package whose ./format export names a file the
+          # tarball does not contain.
+          npm run build:format
 
-          # A tarball missing either half of the package is worse than no
-          # release at all, so every artifact is checked before anything reaches
-          # npm.
-          for required in dist/index.js server/browser/server.js server/node/dist/node/server.js server/node/pubsdata server/node/messagebundle.properties; do
+          # A tarball missing any part of the package is worse than no release at
+          # all, so every path the export map names is checked before anything
+          # reaches npm.
+          for required in dist/index.js dist/format.bundle.js dist/format.d.ts server/browser/server.js server/node/dist/node/server.js server/node/pubsdata server/node/messagebundle.properties; do
             if [ ! -s "$required" ]; then
               echo "$required is missing - refusing to publish an incomplete package"
               exit 1
