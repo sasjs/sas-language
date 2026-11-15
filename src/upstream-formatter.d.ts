@@ -16,6 +16,10 @@ declare module 'upstream-formatter' {
   }
 
   export interface TextEdit {
+    range: {
+      start: { line: number; character: number }
+      end: { line: number; character: number }
+    }
     newText: string
   }
 

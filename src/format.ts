@@ -54,8 +54,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { applyEdits, documentFrom } from './textDocument.js'
+
 import { Formatter, Model, ResLoader, SyntaxProvider } from 'upstream-formatter'
-import type { TextDocumentLike } from 'upstream-formatter'
 
 export interface FormatOptions {
   /**
@@ -159,43 +160,6 @@ const assertDataRoot = (root: string) => {
 }
 
 /**
- * The text buffer the formatter's model reads.
- *
- * Upstream wraps `vscode-languageserver-textdocument` for this, which would mean
- * carrying that package into the published bundle for four methods. Positions
- * here follow the same rules: `offsetAt` clamps to the end of the line's
- * content, so a range ending at `character: 0` of the next line includes the
- * newline - which is exactly how `Model.getLine` reads a line back.
- */
-const documentFrom = (text: string): TextDocumentLike => {
-  const lines = text.split(/\r\n|\r|\n/)
-  const starts: number[] = []
-  const lengths: number[] = []
-  let offset = 0
-  for (const line of lines) {
-    starts.push(offset)
-    lengths.push(line.length)
-    offset += line.length
-    // A line break of any spelling advances the next line by the same amount;
-    // only the content lengths matter for clamping.
-    const rest = text.slice(offset)
-    const lineBreak = /^(?:\r\n|\r|\n)/.exec(rest)
-    if (lineBreak) offset += lineBreak[0].length
-  }
-
-  const offsetAt = ({ line, character }: { line: number; character: number }) => {
-    if (line >= starts.length) return text.length
-    return Math.min(starts[line] + character, starts[line] + lengths[line])
-  }
-
-  return {
-    lineCount: lines.length,
-    offsetAt,
-    getText: (range) => text.slice(offsetAt(range.start), offsetAt(range.end))
-  }
-}
-
-/**
  * Formats a SAS program and returns the text.
  *
  * Returns the input unchanged when the formatter produces no edit, which happens
@@ -238,7 +202,7 @@ export const formatText = (text: string, options: FormatOptions = {}): Promise<s
         useTabs: options.useTabs ?? false
       })
 
-      return edits.length ? edits[0].newText : text
+      return applyEdits(text, edits)
     } finally {
       dataRoot = previous
     }
