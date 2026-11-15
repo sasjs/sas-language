@@ -33,7 +33,7 @@ npm install @sasjs/sas-language
 ```
 
 The registry tarball ships the compiled output, so nothing is built on install. It
-is 12 MB compressed and 5,208 files, carrying the data and both language-server
+is 12 MB compressed and 5,214 files, carrying the data and both language-server
 builds.
 
 A git install also works, but needs lifecycle scripts enabled, because the build
@@ -71,6 +71,20 @@ const doc = docsFor(docs, 'abs')
 
 Every group is a separate path, so a bundler emits only the groups you import and
 the documentation as its own chunk.
+
+## Formatting
+
+`./format` exposes the formatter the server uses, without running the server. An editor, a CLI in CI and a browser editor all need the same output and only the editors can speak LSP, so the reprint is available as a call:
+
+```ts
+import { formatText } from '@sasjs/sas-language/format'
+
+const formatted = await formatText(source, { tabWidth: 2, useTabs: false })
+```
+
+It lexes with the same vocabulary the server does, so it needs the data tree. `dataRoot` defaults to the staged `server/node` directory, which a registry install already has; pass it to read the vocabulary from somewhere else. The root must be the complete tree: with the procedure files missing, a DATA step still formats and a PROC step silently prints nothing at all.
+
+Keyword case is preserved rather than normalised - the printer has no casing option - so a house style is applied by whatever rules layer sits above this one.
 
 ## The language server
 
