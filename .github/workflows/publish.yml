@@ -88,6 +88,23 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Before the build, and it is what makes the build possible: `build:data`
+      # reads .upstream/manifest.json, which only `npm run fetch` writes, so on a
+      # fresh checkout a build that runs first fails with the instructions it
+      # needs. Publishing data that does not match the repository would be worse
+      # than publishing nothing, so the refresh is replayed and the result
+      # compared before anything reaches npm.
+      - name: Fetch the pinned data, and check it matches its provenance
+        run: |
+          npm run fetch -- --ref "$(node -p "require('./provenance.json').upstreamRef")"
+          npm run build
+          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
+            echo "data/, provenance.json or src/groups.generated.ts differ from a fresh build:"
+            git --no-pager diff --stat data provenance.json src/groups.generated.ts
+            echo "Run 'npm run refresh && npm run build' and commit the result."
+            exit 1
+          fi
+
       # One command for the whole build. Not a list of four steps: the formatter
       # bundle compiles the upstream source that build:server fetches, so a list
       # can be reordered or shortened, and both have happened.
@@ -99,20 +116,6 @@ jobs:
       # success having executed neither - which is what the 0.5.0 run did.
       - name: Test
         run: npm test
-
-      # Publishing data that does not match the repository would be worse than
-      # publishing nothing, so the refresh is replayed and the result compared
-      # before anything reaches npm.
-      - name: Data is in sync with its provenance
-        run: |
-          npm run fetch -- --ref "$(node -p "require('./provenance.json').upstreamRef")"
-          npm run build
-          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
-            echo "data/, provenance.json or src/groups.generated.ts differ from a fresh build:"
-            git --no-pager diff --stat data provenance.json src/groups.generated.ts
-            echo "Run 'npm run refresh && npm run build' and commit the result."
-            exit 1
-          fi
 
       - name: Check the release tool has no dependencies of its own
         # It runs with `contents: write`, so its tree has to be auditable, and the
