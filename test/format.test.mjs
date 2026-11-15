@@ -144,6 +144,76 @@ run('tabs are used when they are asked for', async () => {
   assert.match(output, /^data foo;\n\tset bar;\nrun;\n$/)
 })
 
+run('keyword case is applied when it is asked for', async () => {
+  // The words come from the lexer's own token table, not from a list of statement
+  // names: ELSE, THEN and a procedure's statements (VAR, CLASS) are not in the
+  // statement files, and a vocabulary-based pass left them untouched beside cased
+  // neighbours.
+  const input = [
+    'DATA work.foo;',
+    'SET sashelp.class;',
+    'IF age>12 THEN flag=1;ELSE flag=0;',
+    'RUN;',
+    '',
+    'PROC MEANS data=work.foo n mean;',
+    'VAR age;',
+    'CLASS flag;',
+    'RUN;',
+    ''
+  ].join('\n')
+
+  const lowered = await formatText(input, { keywordCase: 'lower' })
+  assert.equal(
+    lowered,
+    [
+      'data work.foo;',
+      '  set sashelp.class;',
+      '  if age>12 then flag=1;',
+      '  else flag=0;',
+      'run;',
+      '',
+      'proc means data=work.foo n mean;',
+      '  var age;',
+      '  class flag;',
+      'run;',
+      ''
+    ].join('\n')
+  )
+
+  const raised = await formatText(
+    ['data foo;', 'set bar;', 'if x then y=1;else y=0;', 'run;', ''].join('\n'),
+    { keywordCase: 'upper' }
+  )
+  assert.equal(
+    raised,
+    ['DATA foo;', '  SET bar;', '  IF x THEN y=1;', '  ELSE y=0;', 'RUN;', ''].join('\n')
+  )
+})
+
+run('keyword case leaves strings, comments and identifiers alone', async () => {
+  const input = [
+    'data foo;',
+    '/* data step, kept as written */',
+    'note = "DATA step in a string";',
+    'keep total;',
+    'run;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input, { keywordCase: 'upper' })
+
+  assert.match(output, /DATA foo;/)
+  assert.match(output, /\/\* data step, kept as written \*\//)
+  assert.match(output, /"DATA step in a string"/)
+  // KEEP is a statement, `total` is a name: one is cased, the other is not.
+  assert.match(output, /KEEP total;/)
+})
+
+run('keyword case does nothing unless it is asked for', async () => {
+  const input = ['data foo;', 'set bar;', 'run;', ''].join('\n')
+  assert.equal(await formatText(input, { keywordCase: 'preserve' }), await formatText(input))
+})
+
 run('a dataRoot belongs to its own call and is not left behind', async () => {
   // The loader's root is process-wide state, so this is the case that keeps a
   // caller from pinning it: a second tree is used for one call, then deleted, and
