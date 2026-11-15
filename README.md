@@ -200,45 +200,13 @@ A hook is best-effort, so CI enforces the same things from the other side: a ful
 
 ## Releasing
 
-`.github/workflows/publish.yml` publishes on every push to `main`.
+`.github/workflows/publish.yml` publishes on every push to `main`, and the version comes from the conventional commits since the last tag - `fix:` and `feat:` on `main` release, `chore:` and `ci:` do not.
 
-Versioning is semantic-release's job: it reads the conventional commits since the
-last tag, bumps the version, tags the release and writes the release notes.
-Publishing is a separate step, and it uses the npm trusted publisher, so no token
-is stored anywhere.
+[@sasjs/release](https://github.com/sasjs/release) cuts the tag and a draft release over the API: nothing is pushed to `main`, no version commit is made, and no branch protection is bypassed. `--prepare-publish` then stamps the tag's version into `package.json` and refuses a tag that is not an ancestor of `main`, and the tarball is published with the npm trusted publisher, so no token is stored anywhere. The release is un-drafted last, so a version is never advertised before its artifact exists.
 
-semantic-release is deliberately **not** a devDependency. Its tree is where every
-advisory in this repo used to come from - `micromatch` -> `braces`, and the npm
-package `@semantic-release/npm` bundles - and none of them has a patched release.
-`npx` fetches the pinned pair for the release run only, so nothing of it enters
-the lockfile or the audit.
+Between the build and the publish sit the gates that decide whether a release is real: `npm run build:ship` builds everything in one command, `npm test` runs afterwards so the suites that need those artifacts actually execute, and `npm run verify:pack` derives every path the export map promises and refuses to publish a tarball missing one. `package.json` on `main` keeps its committed version - the tag records what was released.
 
-Setup, once: on npmjs.com, add a trusted publisher for `@sasjs/sas-language` -
-repository `sasjs/sas-language`, workflow `publish.yml`, environment blank.
-
-semantic-release is configured **not** to push to `main`: `@semantic-release/git`
-is deliberately absent, so the version commit is never made and nothing needs to
-bypass branch protection. The release notes and the semantic versioning are
-unaffected - `@semantic-release/github` still publishes the grouped notes as the
-release body, and `@semantic-release/commit-analyzer` still maps `fix:` to a
-patch, `feat:` to a minor and a breaking change to a major. The one consequence
-is that `package.json` on `main` keeps the last committed version rather than the
-released one.
-
-Which commits cut a release follows the usual convention: `fix:` and `feat:` on
-`main` do, `chore:` and `ci:` do not. The refresh workflow opens a pull request,
-so merging it with a `fix:` or `feat:` subject is what cuts the next release.
-
-The publish step asks the registry first, so a push that produces no release
-reports that the version is already published and stays green, rather than
-failing with E403. When there is something to publish, it builds both the compiled
-API and the server, and refuses to publish if any artifact is missing.
-
-The workflow installs npm 11 before installing anything, because the trusted
-publisher needs 11.5.1 or later and a release should not adopt a new npm major on
-its own. `scripts/build-server.mjs` patches the upstream sub-build dispatch so the
-server builds on npm 11 and npm 12 alike; the pin keeps the release on the older
-of the two until the move is deliberate.
+Setup, once: on npmjs.com, add a trusted publisher for `@sasjs/sas-language` - repository `sasjs/sas-language`, workflow `publish.yml`, environment blank. The filename is load-bearing: the trusted publisher and the provenance attestation both name it.
 
 ## Licence
 

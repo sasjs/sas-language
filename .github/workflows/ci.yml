@@ -31,25 +31,9 @@ jobs:
 
       - name: Audit dependencies
         # Every dependency, dev included. The package has no runtime
-        # dependencies, and the release toolchain carries its own lockfile under
-        # release/ (audited separately below), so any advisory at all is a real
-        # one.
+        # dependencies, and @sasjs/release ships none of its own - the publish job
+        # asserts that - so any advisory at all is a real one.
         run: npm audit --audit-level=low
-
-      - name: Audit the release toolchain
-        # Its own scope: the toolchain is not shipped, so it must not gate the
-        # package, but it runs with publish credentials, so it must not be
-        # invisible either. Fails on anything outside the named exemptions in
-        # release/audit.mjs.
-        run: node release/audit.mjs
-
-      - name: Install the release toolchain
-        # The audit above reads the lockfile only, so drift between
-        # release/package.json and release/package-lock.json is invisible to
-        # it. This install is what makes that drift fail on a pull request
-        # rather than in the publish run on main. Same step as sasjs/adapter's
-        # build-unit-tests.yml.
-        run: npm ci --prefix release --ignore-scripts
 
       - name: Lint
         run: npm run lint
@@ -189,6 +173,14 @@ jobs:
       - name: Build the formatter API from the same source
         if: steps.scope.outputs.needed == 'true'
         run: npm run build:format
+
+      # The same check the release runs before it publishes: every path the
+      # export map promises is in the tarball, derived from package.json rather
+      # than listed by hand. 0.5.0 shipped without its ./format file because the
+      # list that was written by hand did not name it.
+      - name: The package would publish what it promises
+        if: steps.scope.outputs.needed == 'true'
+        run: npm run verify:pack
 
       - name: Test the formatter API against the staged data
         if: steps.scope.outputs.needed == 'true'
