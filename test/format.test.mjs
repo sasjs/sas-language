@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -156,6 +156,39 @@ run('a dataRoot belongs to its own call and is not left behind', async () => {
 
   // Back to the default: if the previous call had pinned its root, this throws.
   assert.equal(await formatText(input), expected)
+})
+
+run('two calls started together each see their own root', async () => {
+  // The roots have to differ in a way the output shows, so the second tree has no
+  // procedure files: from it a PROC step throws, from the default root it
+  // formats. Started together, both outcomes have to survive - a root shared
+  // between them would turn one of these into the other.
+  //
+  // Lexing runs inside the call that set the root rather than after an await,
+  // which is why `Promise.all` here is not the test of a queue: there is no
+  // queue, and this asserts the property the queue was standing in for.
+  const crippled = await mkdtemp(path.join(tmpdir(), 'sasjs-format-noproc-'))
+  await mkdir(path.join(crippled, 'pubsdata'), { recursive: true })
+  for (const entry of ['Statements', 'Functions', 'procedures.json']) {
+    await symlink(path.join(DATA_ROOT, 'pubsdata', entry), path.join(crippled, 'pubsdata', entry))
+  }
+  await symlink(path.join(DATA_ROOT, 'data'), path.join(crippled, 'data'))
+
+  // An unused procedure, so the process-wide cache cannot already hold its data.
+  const input = ['proc printto log=\"/tmp/x.log\";', 'run;', ''].join('\n')
+  const formatted = 'proc printto log=\"/tmp/x.log\";\nrun;\n'
+
+  const [crippledCall, defaultCall] = await Promise.allSettled([
+    formatText(input, { dataRoot: crippled }),
+    formatText(input)
+  ])
+
+  assert.equal(crippledCall.status, 'rejected', 'the tree without the procedure file must fail')
+  assert.match(String(crippledCall.reason?.message), /PRINTTO\.json/)
+  assert.equal(defaultCall.status, 'fulfilled')
+  assert.equal(defaultCall.value, formatted)
+
+  await rm(crippled, { recursive: true, force: true })
 })
 
 run('a missing data root fails with the path and the way out', async () => {

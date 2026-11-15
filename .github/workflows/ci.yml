@@ -177,6 +177,15 @@ jobs:
       # fetched, so it can only be built here. The suite runs afterwards because
       # every format test needs the staged data to lex with - a suite in the
       # build job would skip them all and report green.
+      #
+      # build:ts first: this job installs with --ignore-scripts, so `prepare`
+      # never ran and the declarations the bundle sits beside do not exist yet.
+      # `prepack` orders the two the same way, and `build:format` refuses to run
+      # without the types rather than guessing.
+      - name: Compile the TypeScript the bundle is built around
+        if: steps.scope.outputs.needed == 'true'
+        run: npm run build:ts
+
       - name: Build the formatter API from the same source
         if: steps.scope.outputs.needed == 'true'
         run: npm run build:format

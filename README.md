@@ -82,7 +82,7 @@ import { formatText } from '@sasjs/sas-language/format'
 const formatted = await formatText(source, { tabWidth: 2, useTabs: false })
 ```
 
-It lexes with the same vocabulary the server does, so it needs that data tree on disk. `dataRoot` defaults to the staged `server/node` directory, which a registry install already has; pass it to read the vocabulary from somewhere else. It applies to that call alone, and concurrent calls are queued, because the hook the lexer reads through is process-wide. The root must be the complete tree: with the procedure files missing, a DATA step still formats and a PROC step silently prints nothing at all.
+It lexes with the same vocabulary the server does, so it needs that data tree on disk. `dataRoot` defaults to the staged `server/node` directory, which a registry install already has; pass it to read the vocabulary from somewhere else. It applies to that call alone: the hook the lexer reads through is process-wide, so each call sets it before lexing and restores it afterwards. The root must be the complete tree: with the procedure files missing, a DATA step still formats and a PROC step throws, naming the file it could not read. The vocabulary is cached for the life of the process, so a root decides where a file is read the first time it is needed.
 
 Keyword case is preserved rather than normalised - the printer has no casing option - so a house style is applied by whatever rules layer sits above this one.
 

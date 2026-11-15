@@ -34,7 +34,7 @@
  *
  *   pubsdata/Statements, pubsdata/Functions, pubsdata/procedures.json   ~2.2 MB
  *     enough to format a DATA step; with these alone a program containing a
- *     PROC step formats to nothing at all, silently
+ *     PROC step throws, naming the procedure file it could not read
  *   pubsdata/Procedures/en/<PROC>.json                                 ~38 KB each
  *     loaded only for the procedures a file actually uses - a general-purpose
  *     formatter therefore needs all 423 of them, ~16 MB
@@ -89,20 +89,19 @@ export const defaultDataRoot = resolve(
 )
 
 /**
- * The root the installed loader reads from, for the call currently running.
+ * The root the installed loader reads from, set by each call before it formats.
  *
- * It is module state because `ResLoader.get` is a single process-wide hook - that
- * is the only seam the language core offers - so the root cannot travel with a
- * call. Two orders of business follow from that, and both are handled below:
- * the value is restored when a call finishes, and calls are serialised, because
- * a second caller setting a different root mid-format would otherwise change
- * where the first one reads its vocabulary from.
+ * It is module state because `ResLoader.get` is a single process-wide hook - the
+ * only seam the language core offers - so the root cannot travel with a call.
+ * Each call therefore assigns it up front and restores it afterwards, which is
+ * what stops one caller's root from outliving that caller.
+ *
+ * The vocabulary behind the hook is cached for the life of the process, so a
+ * root only decides where a file is read from the first time it is needed. A
+ * second call with a different root reuses everything the first one loaded.
  */
 let dataRoot = defaultDataRoot
 let loaderInstalled = false
-
-/** The tail of the queue that keeps one format at a time inside the data hook. */
-let queue: Promise<unknown> = Promise.resolve()
 
 /**
  * Replaces the upstream loader with one that reads the same files from
@@ -166,11 +165,14 @@ const assertDataRoot = (root: string) => {
  * for empty input and for a buffer the parser cannot make sense of. A caller
  * that needs to know which of those happened should compare the strings.
  *
- * `dataRoot` applies to this call and no other: the root the loader reads is
- * restored when the call ends, including when it throws. Calls are queued one at
- * a time because that root is process-wide state shared by every caller - two
- * formats running at once with different roots would each read part of their
- * vocabulary from the other's tree.
+ * `dataRoot` applies to this call: the loader's root is assigned before the
+ * buffer is lexed and restored when the call ends, including when it throws.
+ * Lexing happens in that window rather than after an await, so nothing else can
+ * run while the root is in force; the vocabulary it loads is cached for the
+ * process, and a later call reuses it whatever root it passes.
+ *
+ * A buffer whose PROC step needs a procedure file the root does not have throws,
+ * naming the file - it does not come back unformatted.
  */
 export const formatText = (text: string, options: FormatOptions = {}): Promise<string> => {
   const root = options.dataRoot ? resolve(options.dataRoot) : defaultDataRoot
@@ -208,13 +210,5 @@ export const formatText = (text: string, options: FormatOptions = {}): Promise<s
     }
   }
 
-  const queued = queue.then(run, run)
-  // The queue must survive a rejected call, or every later format would inherit
-  // the rejection and fail without ever running.
-  queue = queued.then(
-    () => undefined,
-    () => undefined
-  )
-
-  return queued
+  return run()
 }
