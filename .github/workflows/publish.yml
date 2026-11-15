@@ -151,62 +151,33 @@ jobs:
         # it. The tag is checked against main by the prepare step below.
         run: npm run release -- --host github --release --draft --output "$GITHUB_OUTPUT"
 
-      - name: Work out whether this run still has something to publish
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        # A re-run must be able to finish a job that failed half way, and a
-        # docs-only merge must not rebuild the version before it. `released` alone
-        # cannot tell those apart: on a re-run the tag already exists, so the step
-        # above reports released=false and everything below would be skipped,
-        # leaving a draft release with nothing attached.
+      - name: Decide what to publish
+        id: prepare
+        # The registry answers whether this job has work, not the forge.
+        # `--prepare-publish` reports `publish=false` when the tag's version is
+        # already on npm and `true` when it is not - which is the question this job
+        # has - and it stamps that version into package.json on the way.
         #
-        # `gh release view <tag>` asks /releases/tags/<tag>, which does not return
-        # drafts - the very release this step needs to find. List and match
-        # instead, paginated so a repo with more than one page of releases cannot
-        # read an older tag as having no release at all.
+        # The previous gate asked whether the tag had a draft release. That failed
+        # the 0.5.1 run: a draft release has no tag until it is published, so the
+        # tag the release step reported was absent from the repository, the list
+        # did not show the draft, and the repair branch that fell back to
+        # `gh release create --verify-tag` aborted because the tag did not exist.
         run: |
           set -euo pipefail
           TAG="${{ steps.release.outputs.tag }}"
-          if [ -z "$TAG" ]; then TAG="$(git describe --tags --abbrev=0)"; fi
-          DRAFT="$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
-            -q ".[] | select(.tag_name == \"$TAG\") | .draft")"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
-          case "$DRAFT" in
-            true)
-              echo "publish=true" >> "$GITHUB_OUTPUT"
-              echo "$TAG has a draft release: publishing it"
-              ;;
-            false)
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              echo "$TAG is already released: nothing to publish"
-              ;;
-            "")
-              echo "::warning::$TAG has no release: creating the draft the release step did not"
-              gh release create "$TAG" --draft --title "$TAG" --generate-notes --verify-tag
-              echo "publish=true" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::unexpected answer for $TAG: '$DRAFT'"
-              exit 1
-              ;;
-          esac
-
-      - name: Decide what to publish
-        id: prepare
-        if: steps.gate.outputs.publish == 'true'
-        # Reads the tag the gate resolved - a draft release has no tag of its own
-        # until it is published - and stamps that version into package.json.
-        # Refuses a tag that is not in this clone or not an ancestor of main.
-        #
-        # The registry lookup stays on here, unlike a package that never ships to
-        # npm: the answer decides whether this run publishes at all, and the
-        # outputs say which (skip / publish / exists).
-        run: npm run release -- --prepare-publish --branch main --tag "${{ steps.gate.outputs.tag }}" --output "$GITHUB_OUTPUT"
+          if [ -z "$TAG" ]; then
+            TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "no tag in this clone, so there is no version to publish"
+            exit 0
+          fi
+          npm run release -- --prepare-publish --branch main --tag "$TAG" --output "$GITHUB_OUTPUT"
 
       - name: The tarball would contain what the package promises
-        if: steps.gate.outputs.publish == 'true'
+        if: steps.prepare.outputs.publish == 'true'
         # Derived from the export map rather than listed here: every entry point
         # the package advertises, plus the files the node server reads relative to
         # itself. This is the check that would have stopped 0.5.0, which went to
@@ -215,10 +186,10 @@ jobs:
 
       - name: Attach the tarball to the release
         id: pack
-        if: steps.gate.outputs.publish == 'true'
+        if: steps.prepare.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.gate.outputs.tag }}
+          TAG: ${{ steps.prepare.outputs.tag }}
           VERSION: ${{ steps.prepare.outputs.version }}
         # Packed rather than left to `npm publish`, so the exact artifact that
         # reaches the registry is the one attached to the release. --ignore-scripts
@@ -229,17 +200,17 @@ jobs:
           gh release upload "$TAG" "$TARBALL" --clobber
 
       - name: Publish to npm with the trusted publisher
-        if: steps.gate.outputs.publish == 'true'
+        if: steps.prepare.outputs.publish == 'true'
         # The artifact packed and attached above, not a rebuild: `npm publish
         # <tarball>` publishes the bytes on disk, so the provenance statement
         # describes what is attached to the release.
         run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance
 
       - name: Publish the release
-        if: steps.gate.outputs.publish == 'true'
+        if: steps.prepare.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.gate.outputs.tag }}
+          TAG: ${{ steps.prepare.outputs.tag }}
         # Last: the release is created as a draft, so a version is never advertised
         # before its tarball exists on the page. Running on the gate rather than on
         # `released` is what makes a re-run finish a failed job.
