@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Bundles `dist/format.js` - the `formatText` API - into a single module.
+ * Bundles `src/format.ts` - the `formatText` API - into `dist/format.bundle.js`.
  *
  * `src/format.ts` is type-checked and declared by `tsc` like everything else in
  * `src/`, but its implementation lives in the upstream language core: outside

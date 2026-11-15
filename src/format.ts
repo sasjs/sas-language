@@ -3,10 +3,15 @@
  *
  * The formatter ships inside the language server - it is a prettier printer over
  * a SAS AST, and until now the only way to reach it was to start that server and
- * speak LSP to it. That suits an editor and rules out a CLI, so three products
- * that all need the same output could not share it: the VS Code extension could
- * reach it through the language client, a browser editor through the webworker
- * build, and `sasjs lint` in CI not at all. This entry point is the shared call.
+ * speak LSP to it. That rules out everything without a language server: a CLI in
+ * CI has no way to ask, and a server-side job that wants to format a buffer it
+ * just received has to spawn a whole process for it. This entry point is the
+ * call those host-side consumers share.
+ *
+ * It is a **node** API: it reads the vocabulary from disk with `node:fs`, and the
+ * published module is built for node. A browser cannot load it, and does not
+ * need to - a browser editor keeps the webworker language server it already runs,
+ * and a browser product that wants this formatter asks a node host for it.
  *
  * Formatting one buffer takes four steps, in this order, and none is optional:
  *
@@ -21,7 +26,7 @@
  * The vocabulary is not compiled into the printer. The lexer reads it on demand
  * through `ResLoader`, and the node implementation of that loader `require`s
  * paths relative to its own bundle, which is why the staged server has to sit at
- * exactly its upstream depth. A standalone bundle lives at `dist/format.js`
+ * exactly its upstream depth. The published module is `dist/format.bundle.js`
  * instead, so the loader is replaced here with one that resolves the same paths
  * against a data root.
  *
@@ -71,8 +76,9 @@ export interface FormatOptions {
 /**
  * The directory this package stages the language data in.
  *
- * `dist/format.js` sits one level below the package root, which is also where
- * `server/node/` sits, so the default needs no configuration in the common case.
+ * `dist/format.bundle.js` sits one level below the package root, which is also
+ * where `server/node/` sits, so the default needs no configuration in the common
+ * case.
  */
 export const defaultDataRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -81,8 +87,21 @@ export const defaultDataRoot = resolve(
   'node'
 )
 
+/**
+ * The root the installed loader reads from, for the call currently running.
+ *
+ * It is module state because `ResLoader.get` is a single process-wide hook - that
+ * is the only seam the language core offers - so the root cannot travel with a
+ * call. Two orders of business follow from that, and both are handled below:
+ * the value is restored when a call finishes, and calls are serialised, because
+ * a second caller setting a different root mid-format would otherwise change
+ * where the first one reads its vocabulary from.
+ */
 let dataRoot = defaultDataRoot
 let loaderInstalled = false
+
+/** The tail of the queue that keeps one format at a time inside the data hook. */
+let queue: Promise<unknown> = Promise.resolve()
 
 /**
  * Replaces the upstream loader with one that reads the same files from
@@ -129,8 +148,8 @@ const installLoader = () => {
   loaderInstalled = true
 }
 
-const assertDataRoot = () => {
-  const marker = join(dataRoot, 'pubsdata', 'procedures.json')
+const assertDataRoot = (root: string) => {
+  const marker = join(root, 'pubsdata', 'procedures.json')
   if (!existsSync(marker)) {
     throw new Error(
       `SAS language data is missing: ${marker} does not exist. ` +
@@ -182,31 +201,56 @@ const documentFrom = (text: string): TextDocumentLike => {
  * Returns the input unchanged when the formatter produces no edit, which happens
  * for empty input and for a buffer the parser cannot make sense of. A caller
  * that needs to know which of those happened should compare the strings.
+ *
+ * `dataRoot` applies to this call and no other: the root the loader reads is
+ * restored when the call ends, including when it throws. Calls are queued one at
+ * a time because that root is process-wide state shared by every caller - two
+ * formats running at once with different roots would each read part of their
+ * vocabulary from the other's tree.
  */
-export const formatText = async (text: string, options: FormatOptions = {}): Promise<string> => {
-  if (options.dataRoot) dataRoot = resolve(options.dataRoot)
-  installLoader()
-  assertDataRoot()
+export const formatText = (text: string, options: FormatOptions = {}): Promise<string> => {
+  const root = options.dataRoot ? resolve(options.dataRoot) : defaultDataRoot
 
-  const model = new Model(documentFrom(text))
-  const syntaxProvider = new SyntaxProvider(model)
-  const formatter = new Formatter(model, syntaxProvider)
+  const run = async (): Promise<string> => {
+    installLoader()
+    const previous = dataRoot
+    dataRoot = root
+    try {
+      assertDataRoot(root)
 
-  const lastLine = model.getLineCount() - 1
-  syntaxProvider.add({
-    text: '',
-    removedText: '',
-    oldRange: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
-    newRange: {
-      start: { line: 0, column: 0 },
-      end: { line: lastLine, column: model.getColumnCount(lastLine) }
+      const model = new Model(documentFrom(text))
+      const syntaxProvider = new SyntaxProvider(model)
+      const formatter = new Formatter(model, syntaxProvider)
+
+      const lastLine = model.getLineCount() - 1
+      syntaxProvider.add({
+        text: '',
+        removedText: '',
+        oldRange: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
+        newRange: {
+          start: { line: 0, column: 0 },
+          end: { line: lastLine, column: model.getColumnCount(lastLine) }
+        }
+      })
+
+      const edits = await formatter.format({
+        tabWidth: options.tabWidth ?? 2,
+        useTabs: options.useTabs ?? false
+      })
+
+      return edits.length ? edits[0].newText : text
+    } finally {
+      dataRoot = previous
     }
-  })
+  }
 
-  const edits = await formatter.format({
-    tabWidth: options.tabWidth ?? 2,
-    useTabs: options.useTabs ?? false
-  })
+  const queued = queue.then(run, run)
+  // The queue must survive a rejected call, or every later format would inherit
+  // the rejection and fail without ever running.
+  queue = queued.then(
+    () => undefined,
+    () => undefined
+  )
 
-  return edits.length ? edits[0].newText : text
+  return queued
 }

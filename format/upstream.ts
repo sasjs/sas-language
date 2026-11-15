@@ -4,8 +4,9 @@
  * This file is never compiled by `tsc`: it imports the language core out of the
  * upstream source tree, which lives outside `src/` and is fetched at build time.
  * `scripts/build-format.mjs` bundles `src/format.ts` with this file substituted
- * for the `upstream-formatter` specifier, so the published `dist/format.js` is
- * one self-contained module and the upstream tree is not needed at runtime.
+ * for the `upstream-formatter` specifier, so the published
+ * `dist/format.bundle.js` is one self-contained module and the upstream tree is
+ * not needed at runtime.
  *
  * The `ResLoader` re-export is deliberate: the lexer reads its vocabulary
  * through that object, and exporting it lets `src/format.ts` point the loader at

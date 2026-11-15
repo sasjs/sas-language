@@ -3,12 +3,13 @@
  * behaviour a caller depends on, and the failure mode when the vocabulary is
  * absent.
  *
- * Two build artifacts have to exist for any of this to run - `dist/format.js`,
+ * Two build artifacts have to exist for any of this to run - `dist/format.bundle.js`,
  * which `build:format` bundles from the upstream core, and the staged
  * `server/node` tree, which holds the language data the formatter lexes with.
- * CI's build job has the first only when the server job has run, so a missing
- * artifact is a skip with the reason printed rather than a failure, the same
- * shape as `server.test.mjs`.
+ * Both belong to the server job: it is the only job that fetches the upstream
+ * source the bundle is compiled from, and the only one that stages the data. So a
+ * missing artifact here is a skip with the reason printed rather than a failure,
+ * the same shape as `server.test.mjs`.
  *
  * The expected output is spelled out rather than "differs from input": these
  * strings are what the printer produces, and a silent change in how it indents
@@ -17,6 +18,8 @@
  */
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
+import { mkdtemp, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -130,7 +133,33 @@ run('tabs are used when they are asked for', async () => {
   assert.match(output, /^data foo;\n\tset bar;\nrun;\n$/)
 })
 
+run('a dataRoot belongs to its own call and is not left behind', async () => {
+  // The loader's root is process-wide state, so this is the case that keeps a
+  // caller from pinning it: a second tree is used for one call, then deleted, and
+  // the next call has to fall back to the default rather than fail on a root that
+  // is no longer there. The rejected call after it covers the same leak when the
+  // call throws - `assertDataRoot` runs inside the window the root is set in.
+  const isolated = await mkdtemp(path.join(tmpdir(), 'sasjs-format-'))
+  await symlink(path.join(DATA_ROOT, 'pubsdata'), path.join(isolated, 'pubsdata'))
+  await symlink(path.join(DATA_ROOT, 'data'), path.join(isolated, 'data'))
+
+  const input = ['data foo;', 'set bar;', 'run;', ''].join('\n')
+  const expected = 'data foo;\n  set bar;\nrun;\n'
+
+  assert.equal(await formatText(input, { dataRoot: isolated }), expected)
+
+  await rm(isolated, { recursive: true, force: true })
+  await assert.rejects(
+    () => formatText(input, { dataRoot: isolated }),
+    /SAS language data is missing/
+  )
+
+  // Back to the default: if the previous call had pinned its root, this throws.
+  assert.equal(await formatText(input), expected)
+})
+
 run('a missing data root fails with the path and the way out', async () => {
+  // Deliberately not the last test in this file: the root is restored either way.
   await assert.rejects(
     () => formatText('data foo;\nrun;\n', { dataRoot: path.join(ROOT, 'no-such-tree') }),
     (error) => {
