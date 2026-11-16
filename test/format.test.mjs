@@ -318,6 +318,13 @@ run('standalone macro calls remain separate statements', async () => {
   assert.equal(await formatText(output), output)
 })
 
+run('a standalone call with a comment before its opening parenthesis stays separate', async () => {
+  const input = '%first /* note */ (x=1)\n%second(x=2)\n'
+  const output = await formatText(input)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
 run('a call before mend ends at the surrounding macro indentation', async () => {
   const input = '%macro m();\n  %first(a=(1))\n%mend m;\n'
   assert.equal(await formatText(input), input)
@@ -343,8 +350,17 @@ run('a call with a semicolon or same-line expression is not split', async () => 
 })
 
 run('a multiline expression beginning with a macro call stays together', async () => {
-  const output = await formatText('%foo(x=1)\n+ %bar(y=2);\n')
+  const input = '%foo(x=1)\n+ %bar(y=2);\n'
+  const output = await formatText(input)
   assert.equal(output, '%foo(x=1) + %bar(y=2);\n')
+  assert.equal(output.replace(/\s/g, ''), input.replace(/\s/g, ''))
+})
+
+run('comments do not turn a call inside a larger expression into a statement', async () => {
+  const input = '%let x=%first /* note */ (x=1)\n+ %second(x=2);\n'
+  const output = await formatText(input)
+  assert.equal(output.replace(/\s/g, ''), input.replace(/\s/g, ''))
+  assert.doesNotMatch(output, /\)\s*\n\s*\+/)
 })
 
 run('a doxygen header keeps the layout of its body', async () => {

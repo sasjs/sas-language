@@ -90,21 +90,37 @@ const COMMENT_PRINTER = [
  * Close only a complete parenthesised call whose next non-comment token starts
  * on a later line; expressions and calls followed by a semicolon keep their
  * original statement. Count separator tokens only, not parentheses in strings,
- * comments or the raw text produced by preserveQuoting.
+ * comments or the raw text produced by preserveQuoting. Comments can precede
+ * the call or appear between its name and opening parenthesis, but a preceding
+ * non-comment token means the call is part of a larger statement. The token
+ * callback copies start and end from the lexer (SyntaxProvider.ts); parser.ts
+ * also relies on both positions throughout, including its trailing-comment code.
  */
 const MACRO_CALL_END = [
-  `      //#region --- Check for statement end
+  `      quoting = preserveQuoting(quoting, currentStatement, model);
+      if (quoting >= 0) {
+        continue;
+      }
+
+      //#region --- Check for statement end
       if (node.type === "sep" && node.text === ";") {`,
-  `      //#region --- Check for statement end
+  `      quoting = preserveQuoting(quoting, currentStatement, model);
+      if (quoting >= 0) {
+        continue;
+      }
+
+      //#region --- Check for statement end
       const callTokens = currentStatement.children;
+      const first = callTokens.findIndex((token) => !isComment(token));
+      const open = callTokens.findIndex((token, index) => index > first && !isComment(token));
       let callDepth = 0;
       let completeMacroCall = false;
       if (
-        callTokens[0].type === "macro-ref" &&
-        callTokens[1]?.type === "sep" && callTokens[1].text === "(" &&
+        first >= 0 && callTokens[first].type === "macro-ref" &&
+        open >= 0 && callTokens[open].type === "sep" && callTokens[open].text === "(" &&
         node.type === "sep" && node.text === ")"
       ) {
-        for (let j = 1; j < callTokens.length; j++) {
+        for (let j = open; j < callTokens.length; j++) {
           const token = callTokens[j];
           if (token.type !== "sep") continue;
           if (token.text === "(") callDepth++;
@@ -184,7 +200,11 @@ export const patchUpstream = () => {
       )
     }
 
-    source = source.split(from).join(to)
+    if (source.indexOf(from) !== source.lastIndexOf(from)) {
+      throw new Error(`upstream ${file} has multiple anchors for "${name}"`)
+    }
+
+    source = source.replace(from, to)
     writeFileSync(path, source)
 
     console.log(`patched upstream ${file}: ${name}`)
