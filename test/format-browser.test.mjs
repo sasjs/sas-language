@@ -203,6 +203,17 @@ run(
   { root: '/assets/sas-language/' }
 )
 
+run('reads the default root when the root is an empty string', async ({ formatText }) => {
+  // `dataRoot: ''` is a caller saying nothing rather than naming the origin: a join
+  // would make it `/` and then 404 against a root nobody asked for
+  await formatText(['data foo;', 'run;', ''].join('\n'), { dataRoot: '' })
+
+  assert.ok(
+    requests.every((url) => url.startsWith('/sas-language/')),
+    `outside the default root: ${requests.join(', ')}`
+  )
+})
+
 run('keeps two data roots apart in one instance', async ({ formatText }) => {
   const text = ['data foo;', 'run;', ''].join('\n')
 

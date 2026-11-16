@@ -111,8 +111,18 @@ const defaultFetchTimeoutMs = 30_000
 /** Upstream asks for `../../pubsdata/...`; the cache is keyed without the climb. */
 const relative = (url: string) => url.replace(/^(\.\.[/\\])+/, '')
 
-const rootFor = (dataRoot?: string) =>
-  (dataRoot ?? defaultDataRoot).endsWith('/') ? (dataRoot ?? defaultDataRoot) : `${dataRoot}/`
+/**
+ * The data root a call reads from.
+ *
+ * An absent root means the default, and so does an empty one: `dataRoot: ''` reads
+ * as "no root named" rather than as the origin, which a join would otherwise turn
+ * into `/` and then report 404s against a root nobody asked for.
+ */
+const rootFor = (dataRoot?: string) => {
+  const root = dataRoot?.trim() ? dataRoot : defaultDataRoot
+
+  return root.endsWith('/') ? root : `${root}/`
+}
 
 /**
  * One request, bounded end to end: the fetch AND the body read.
@@ -326,6 +336,15 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
         return await print(text, layout)
       } catch (error) {
         if (!(error instanceof MissingData)) throw error
+
+        // The loader reports a path it could not find. If the cache already holds
+        // that path, no fetch can make progress - the loop would spend its attempts
+        // on cache hits and then blame the budget for a mismatch between the path
+        // the formatter reports and the key the cache holds.
+        if (cache.has(`${root}${error.path}`))
+          throw new Error(
+            `SAS language data could not be read: the formatter asked for ${root}${error.path} after it had been fetched. The path it reports and the path the cache holds disagree.`
+          )
 
         await fetchInto(root, error.path, timeoutMs)
       }

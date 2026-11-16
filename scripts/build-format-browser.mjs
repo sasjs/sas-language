@@ -81,7 +81,10 @@ const browserLoader = {
   setup(api) {
     api.onResolve({ filter: /\/node\/ResLoader$/ }, (args) => {
       if (!args.importer.endsWith('.ts')) return
-      if (!args.importer.includes(`${join('server', 'src')}`)) return
+      // a literal forward slash: esbuild's importer paths are posix, and `join`
+      // builds `server\src` on Windows, so the rewrite would silently miss there
+      // and the failure would surface as a browser build error on `fs`
+      if (!args.importer.includes('server/src')) return
 
       return { path: loaderEntry }
     })
