@@ -318,6 +318,13 @@ run('standalone macro calls remain separate statements', async () => {
   assert.equal(await formatText(output), output)
 })
 
+run('a standalone call with a trailing comment stays separate', async () => {
+  const input = '%first(a=1) /* why */\n%second(b=2)\n'
+  const output = await formatText(input)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
 run('a standalone call with a comment before its opening parenthesis stays separate', async () => {
   const input = '%first /* note */ (x=1)\n%second(x=2)\n'
   const output = await formatText(input)

@@ -204,7 +204,7 @@ export const patchUpstream = () => {
       throw new Error(`upstream ${file} has multiple anchors for "${name}"`)
     }
 
-    source = source.replace(from, to)
+    source = source.replace(from, () => to)
     writeFileSync(path, source)
 
     console.log(`patched upstream ${file}: ${name}`)

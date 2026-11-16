@@ -14,7 +14,7 @@ const anchor = `      quoting = preserveQuoting(quoting, currentStatement, model
       //#region --- Check for statement end
       if (node.type === "sep" && node.text === ";") {`
 
-const fixture = async (t, source) => {
+const fixture = async (t, source, inject = false) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'sasjs-patch-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   await mkdir(path.join(dir, 'scripts'), { recursive: true })
@@ -24,12 +24,30 @@ const fixture = async (t, source) => {
     path.join(root, 'scripts/upstream-patches.mjs'),
     path.join(dir, 'scripts/upstream-patches.mjs')
   )
+  if (inject) {
+    const modulePath = path.join(dir, 'scripts/upstream-patches.mjs')
+    const moduleSource = await readFile(modulePath, 'utf8')
+    const marker = '      const callTokens = currentStatement.children;'
+    assert.ok(moduleSource.includes(marker))
+    await writeFile(
+      modulePath,
+      moduleSource.replace(marker, () => `${marker}\n      // $& $' $$ $1`)
+    )
+  }
   await writeFile(parser, source)
   const { patchUpstream } = await import(
     pathToFileURL(path.join(dir, 'scripts/upstream-patches.mjs'))
   )
   return { parser, patchUpstream }
 }
+
+test('upstream patches insert replacement text literally', async (t) => {
+  const { parser, patchUpstream } = await fixture(t, `before\n${anchor}\nafter`, true)
+  patchUpstream()
+  const patched = await readFile(parser, 'utf8')
+  assert.ok(patched.includes("// $& $' $$ $1"))
+  assert.ok(patched.endsWith('\nafter'))
+})
 
 test('upstream parser patch rejects duplicate contextual anchors', async (t) => {
   const { parser, patchUpstream } = await fixture(t, `${anchor}\n${anchor}`)
