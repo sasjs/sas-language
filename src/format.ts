@@ -8,10 +8,11 @@
  * just received has to spawn a whole process for it. This entry point is the
  * call those host-side consumers share.
  *
- * It is a **node** API: it reads the vocabulary from disk with `node:fs`, and the
- * published module is built for node. A browser cannot load it, and does not
- * need to - a browser editor keeps the webworker language server it already runs,
- * and a browser product that wants this formatter asks a node host for it.
+ * This file is the **node** build: it reads the vocabulary from disk with
+ * `node:fs`. The `./format` specifier also carries a `browser` condition -
+ * `src/format.browser.ts` - which is the same call with the vocabulary fetched
+ * over HTTP, for a browser that wants to format in place rather than post the
+ * program to a node host. Nothing outside this paragraph differs between them.
  *
  * Formatting one buffer takes four steps, in this order, and none is optional:
  *

@@ -62,9 +62,10 @@ const installFetch = (root = '/sas-language/', refuse = '') => {
     const request = String(url)
     requests.push(request)
 
-    const relativePath = request.startsWith(root)
-      ? request.slice(root.length)
-      : request.replace(/^\/+/, '')
+    // Any root is served from the staged tree: everything before `pubsdata/` or
+    // `data/` is the root, whatever its depth, and the rest is the file. That is
+    // what lets a test use more than one root and prove they do not share a cache.
+    const relativePath = request.replace(/^.*?\/(?=pubsdata\/|data\/)/, '')
 
     if (relativePath === refuse) {
       return { ok: false, status: 404, json: async () => ({}) }
@@ -154,6 +155,23 @@ run(
   },
   { root: '/assets/sas-language/' }
 )
+
+run('keeps two data roots apart in one instance', async ({ formatText }) => {
+  const text = ['data foo;', 'run;', ''].join('\n')
+
+  await formatText(text, { dataRoot: '/a' })
+
+  requests = []
+
+  await formatText(text, { dataRoot: '/b' })
+
+  // A cache keyed on the path alone answers this second call from the first
+  // root's vocabulary: no request, and no sign that the wrong data was used.
+  assert.ok(
+    requests.some((url) => url === '/b/pubsdata/procedures.json'),
+    `the second root was not fetched: ${requests.join(', ') || 'nothing'}`
+  )
+})
 
 run(
   'names the file and the status when the data root does not answer',

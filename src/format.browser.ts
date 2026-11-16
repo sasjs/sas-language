@@ -76,8 +76,8 @@ export class MissingData extends Error {
  * The files a DATA step needs, relative to the data root.
  *
  * These are fetched before the first attempt rather than discovered by the retry
- * loop: every program asks for them, and six parallel requests are one round trip
- * rather than six serial ones.
+ * loop, because every program asks for them: one parallel batch, once, instead of
+ * a serial miss-and-retry for each.
  */
 const CORE = [
   'pubsdata/procedures.json',
@@ -89,7 +89,14 @@ const CORE = [
   'pubsdata/Functions/en/macro.json'
 ]
 
-/** The fetched vocabulary, keyed by the path the loader asks for. */
+/**
+ * The fetched vocabulary, keyed by root and path.
+ *
+ * The root is part of the key because one page can talk to more than one data
+ * root - a CDN beside the app's own copy - and a key of the path alone would let
+ * the second root answer out of the first one's vocabulary, formatting with the
+ * wrong data and no error anywhere.
+ */
 const cache = new Map<string, unknown>()
 
 /** Locale bundles are only used for human-readable errors; absent is fine. */
@@ -105,7 +112,7 @@ const rootFor = (dataRoot?: string) =>
   (dataRoot ?? defaultDataRoot).endsWith('/') ? (dataRoot ?? defaultDataRoot) : `${dataRoot}/`
 
 const fetchInto = async (root: string, path: string): Promise<void> => {
-  if (cache.has(path)) return
+  if (cache.has(`${root}${path}`)) return
 
   const response = await fetch(`${root}${path}`)
 
@@ -116,7 +123,7 @@ const fetchInto = async (root: string, path: string): Promise<void> => {
     )
   }
 
-  cache.set(path, await response.json())
+  cache.set(`${root}${path}`, await response.json())
 }
 
 /**
@@ -128,15 +135,19 @@ const fetchInto = async (root: string, path: string): Promise<void> => {
  */
 let loaderInstalled = false
 
+/** The root of the call in progress: the loader reads through it. */
+let dataRoot = defaultDataRoot
+
 const installLoader = () => {
   if (loaderInstalled) return
 
   ResLoader.get = (url: string, callback: (data?: unknown) => void) => {
     const path = relative(url)
+    const key = `${dataRoot}${path}`
 
-    if (!cache.has(path)) throw new MissingData(path)
+    if (!cache.has(key)) throw new MissingData(path)
 
-    callback(cache.get(path))
+    callback(cache.get(key))
   }
 
   ResLoader.getBundle = (locale: string) => bundles.get(locale) ?? ''
@@ -207,25 +218,35 @@ export interface FormatOptions {
  */
 export const formatText = async (text: string, options: FormatOptions = {}): Promise<string> => {
   const root = rootFor(options.dataRoot)
+  const previous = dataRoot
 
   installLoader()
 
-  await Promise.all(CORE.map((path) => fetchInto(root, path)))
+  // The loader is a single module-wide hook, so the root of this call is
+  // assigned for as long as it runs and put back afterwards - the same shape the
+  // node entry uses, and for the same reason.
+  dataRoot = root
 
-  const layout = {
-    tabWidth: options.tabWidth ?? 2,
-    useTabs: options.useTabs ?? false,
-    keywordCase: options.keywordCase ?? 'preserve'
-  } as const
+  try {
+    await Promise.all(CORE.map((path) => fetchInto(root, path)))
 
-  for (let attempt = 0; attempt <= maxFetches; attempt++) {
-    try {
-      return await print(text, layout)
-    } catch (error) {
-      if (!(error instanceof MissingData)) throw error
+    const layout = {
+      tabWidth: options.tabWidth ?? 2,
+      useTabs: options.useTabs ?? false,
+      keywordCase: options.keywordCase ?? 'preserve'
+    } as const
 
-      await fetchInto(root, error.path)
+    for (let attempt = 0; attempt <= maxFetches; attempt++) {
+      try {
+        return await print(text, layout)
+      } catch (error) {
+        if (!(error instanceof MissingData)) throw error
+
+        await fetchInto(root, error.path)
+      }
     }
+  } finally {
+    if (dataRoot === root) dataRoot = previous
   }
 
   throw new Error(
