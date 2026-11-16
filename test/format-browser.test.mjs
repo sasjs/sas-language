@@ -53,12 +53,13 @@ let requests = []
  * The path after the root is what names the file, which is exactly the contract
  * the loader relies on. `refuse` answers 404 for one named path, so a test can
  * describe a root that is missing a file rather than one that is missing
- * entirely.
+ * entirely. `stall` never settles for a named path, which is the host that accepts
+ * a connection and never answers.
  */
-const installFetch = (root = '/sas-language/', refuse = '') => {
+const installFetch = (root = '/sas-language/', refuse = '', stall = '') => {
   requests = []
 
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, options = {}) => {
     const request = String(url)
     requests.push(request)
 
@@ -66,6 +67,17 @@ const installFetch = (root = '/sas-language/', refuse = '') => {
     // `data/` is the root, whatever its depth, and the rest is the file. That is
     // what lets a test use more than one root and prove they do not share a cache.
     const relativePath = request.replace(/^.*?\/(?=pubsdata\/|data\/)/, '')
+
+    if (stall && request.startsWith(stall)) {
+      return new Promise((resolve, reject) => {
+        // honour the abort, as a real fetch does, and settle for nothing else
+        options.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        })
+      })
+    }
 
     if (relativePath === refuse) {
       return { ok: false, status: 404, json: async () => ({}) }
@@ -84,10 +96,12 @@ const installFetch = (root = '/sas-language/', refuse = '') => {
 }
 
 const run = (name, fn, options = {}) =>
-  test(name, async (context) => {
+  // a test that would hang without the guard it describes is given a timeout, so
+  // the regression fails in seconds rather than stalling the suite
+  test(name, options.timeout ? { timeout: options.timeout } : {}, async (context) => {
     if (reason) return context.skip(reason)
 
-    installFetch(options.root, options.refuse)
+    installFetch(options.root, options.refuse, options.stall)
     await fn(await fresh())
   })
 
@@ -195,6 +209,31 @@ run('keeps two data roots apart when both calls are in flight', async ({ formatT
   assert.ok(lastA >= 0 && firstB >= 0, `both roots were not fetched: ${requests.join(', ')}`)
   assert.ok(lastA < firstB, `the calls overlapped: ${requests.join(', ')}`)
 })
+
+run(
+  'fails a stalled fetch, and lets the call behind it run',
+  async ({ formatText }) => {
+    const text = ['data foo;', 'run;', ''].join('\n')
+
+    // The first call's root accepts and never answers. Bounded, its request is
+    // aborted, the call rejects with a sentence naming the file - and the queue
+    // drains, so the call that was waiting behind it still formats.
+    const stalled = formatText(text, { dataRoot: '/slow', fetchTimeoutMs: 20 })
+    const after = formatText(text, { dataRoot: '/sas-language/' })
+
+    const [first, second] = await Promise.allSettled([stalled, after])
+
+    assert.equal(first.status, 'rejected')
+    assert.match(
+      first.reason.message,
+      /SAS language data could not be read: \/slow\/pubsdata\/procedures\.json did not answer within 0\.02s/
+    )
+
+    assert.equal(second.status, 'fulfilled')
+    assert.equal(second.value, text)
+  },
+  { root: '/sas-language/', stall: '/slow/', timeout: 10_000 }
+)
 
 run(
   'names the file and the status when the data root does not answer',

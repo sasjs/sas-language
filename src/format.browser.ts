@@ -105,16 +105,49 @@ const bundles = new Map<string, string>()
 /** How many fetches one format may make before it gives up. */
 const maxFetches = 40
 
+/** How long one fetch may take before the call fails, in milliseconds. */
+const defaultFetchTimeoutMs = 30_000
+
 /** Upstream asks for `../../pubsdata/...`; the cache is keyed without the climb. */
 const relative = (url: string) => url.replace(/^(\.\.[/\\])+/, '')
 
 const rootFor = (dataRoot?: string) =>
   (dataRoot ?? defaultDataRoot).endsWith('/') ? (dataRoot ?? defaultDataRoot) : `${dataRoot}/`
 
-const fetchInto = async (root: string, path: string): Promise<void> => {
+/**
+ * One fetch, bounded.
+ *
+ * A request that never settles - a connection that stalls, a host that accepts and
+ * never answers - would otherwise hold the call open forever, and because formats
+ * run one at a time it would hold every later call open with it: the Format button
+ * would do nothing, with no error anywhere. The timer aborts the request so the
+ * call fails where a reader can see it and the queue moves on.
+ */
+const boundedFetch = async (url: string, timeoutMs: number): Promise<Response> => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } catch (error) {
+    if ((error as Error)?.name === 'AbortError') {
+      throw new Error(
+        `SAS language data could not be read: ${url} did not answer within ${
+          timeoutMs / 1000
+        }s. Serve the package's pubsdata and data folders under the data root, or pass \`dataRoot\` and \`fetchTimeoutMs\` to formatText().`
+      )
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const fetchInto = async (root: string, path: string, timeoutMs: number): Promise<void> => {
   if (cache.has(`${root}${path}`)) return
 
-  const response = await fetch(`${root}${path}`)
+  const response = await boundedFetch(`${root}${path}`, timeoutMs)
 
   if (!response.ok) {
     throw new Error(
@@ -198,6 +231,16 @@ export interface FormatOptions {
    * end with one.
    */
   dataRoot?: string
+  /**
+   * How long one fetch may take before the call fails, in milliseconds. Defaults
+   * to 30000.
+   *
+   * A data root that accepts a connection and never answers would otherwise hold
+   * the call open - and, because formats run one at a time, every later call with
+   * it - so the request is aborted and the call rejects with a sentence naming the
+   * file. Raise it for a slow CDN; lower it for a host on the same machine.
+   */
+  fetchTimeoutMs?: number
   /** Case to give keywords. Defaults to `preserve`. */
   keywordCase?: 'upper' | 'lower' | 'preserve'
 }
@@ -209,7 +252,9 @@ export interface FormatOptions {
  * so the root a call assigns is visible to any other call in flight: two calls with
  * different roots would swap each other's vocabulary and format with the wrong
  * data, with nothing to see afterwards. Queueing costs one call's latency behind
- * the one before it, and nothing else.
+ * the one before it, and nothing else - every fetch is bounded by
+ * `fetchTimeoutMs`, so a stalled root fails its own call instead of holding the
+ * chain.
  */
 let queue: Promise<unknown> = Promise.resolve()
 
@@ -244,6 +289,7 @@ export const formatText = (text: string, options: FormatOptions = {}): Promise<s
 const formatNow = async (text: string, options: FormatOptions): Promise<string> => {
   const root = rootFor(options.dataRoot)
   const previous = dataRoot
+  const timeoutMs = options.fetchTimeoutMs ?? defaultFetchTimeoutMs
 
   installLoader()
 
@@ -253,7 +299,7 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
   dataRoot = root
 
   try {
-    await Promise.all(CORE.map((path) => fetchInto(root, path)))
+    await Promise.all(CORE.map((path) => fetchInto(root, path, timeoutMs)))
 
     const layout = {
       tabWidth: options.tabWidth ?? 2,
@@ -267,7 +313,7 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
       } catch (error) {
         if (!(error instanceof MissingData)) throw error
 
-        await fetchInto(root, error.path)
+        await fetchInto(root, error.path, timeoutMs)
       }
     }
   } finally {
