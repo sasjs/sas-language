@@ -133,6 +133,11 @@ const run = (name, fn, options = {}) =>
     await fn(await fresh())
   })
 
+run('formats standalone macro calls through the browser entry', async ({ formatText }) => {
+  const input = '%first(a=(1))\n\n%second(b=2)\n%let x=1;\n'
+  assert.equal(await formatText(input), input)
+})
+
 test('ships the browser declaration the export map promises', (context) => {
   if (reason) return context.skip(reason)
 

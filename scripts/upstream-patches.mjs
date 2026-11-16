@@ -86,6 +86,45 @@ const COMMENT_PRINTER = [
 ]
 
 /**
+ * A macro invocation written as a standalone line has no required semicolon.
+ * Close only a complete parenthesised call whose next non-comment token starts
+ * on a later line; expressions and calls followed by a semicolon keep their
+ * original statement. Count separator tokens only, not parentheses in strings,
+ * comments or the raw text produced by preserveQuoting.
+ */
+const MACRO_CALL_END = [
+  `      //#region --- Check for statement end
+      if (node.type === "sep" && node.text === ";") {`,
+  `      //#region --- Check for statement end
+      const callTokens = currentStatement.children;
+      let callDepth = 0;
+      let completeMacroCall = false;
+      if (
+        callTokens[0].type === "macro-ref" &&
+        callTokens[1]?.type === "sep" && callTokens[1].text === "(" &&
+        node.type === "sep" && node.text === ")"
+      ) {
+        for (let j = 1; j < callTokens.length; j++) {
+          const token = callTokens[j];
+          if (token.type !== "sep") continue;
+          if (token.text === "(") callDepth++;
+          if (token.text === ")") callDepth--;
+          if (callDepth === 0) {
+            completeMacroCall = j === callTokens.length - 1;
+            break;
+          }
+        }
+      }
+      const nextNonComment = completeMacroCall
+        ? tokens.slice(i + 1).find((token) => !isComment(token))
+        : undefined;
+      const standaloneMacroCall = completeMacroCall &&
+        (!nextNonComment || (nextNonComment.start.line > node.end.line &&
+          nextNonComment.type !== "sep"));
+      if ((node.type === "sep" && node.text === ";") || standaloneMacroCall) {`
+]
+
+/**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
  * `applied` is the marker that says the file already carries the patch. It has
@@ -98,6 +137,12 @@ const PATCHES = [
     name: 'comment printer keeps the layout of a comment body',
     replace: COMMENT_PRINTER,
     applied: 'const base = token.start ? token.start.column : 0;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'standalone macro calls end at their closing parenthesis',
+    replace: MACRO_CALL_END,
+    applied: 'const standaloneMacroCall = completeMacroCall &&'
   }
 ]
 
