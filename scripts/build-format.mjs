@@ -36,6 +36,8 @@ import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { patchUpstream } from './upstream-patches.mjs'
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const upstream = join(root, '.upstream', 'server')
 const upstreamEntry = join(root, 'format', 'upstream.ts')
@@ -70,6 +72,12 @@ if (!existsSync(esbuild)) {
       'the upstream tree has been fetched but not installed; run npm run build:server'
   )
 }
+
+// The bundle is compiled from the upstream tree, so it needs the same source
+// patches the server build applies. This is the only place that has to hold:
+// `build:format` on its own is a supported step, and a reused server build
+// never runs the fetch that would have patched the tree.
+patchUpstream()
 
 const provenance = JSON.parse(readFileSync(join(root, 'provenance.json'), 'utf8'))
 const ref = provenance.upstreamRef.slice(0, 10)

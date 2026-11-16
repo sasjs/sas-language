@@ -310,3 +310,103 @@ run('a missing data root fails with the path and the way out', async () => {
     }
   )
 })
+
+run('a doxygen header keeps the layout of its body', async () => {
+  // The upstream printer trims every line of a comment, and prettier then
+  // re-indents each line to the enclosing statement, so an author's interior
+  // layout had nowhere to survive. A header written the way @sasjs/core writes
+  // one came back flush left - hanging continuations joined, and code samples
+  // no longer indented far enough to be code in a doxygen reader.
+  const header = [
+    '/**',
+    '  @file',
+    '  @brief one line',
+    '',
+    '  Usage:',
+    '',
+    '      %let x=%mf_trim(&str);',
+    '',
+    '  @param [in] str described over',
+    '    a hanging continuation',
+    '',
+    '  @version 9.2',
+    '**/'
+  ].join('\n')
+  const input = `${header}\n%macro header_case();\n%mend header_case;\n`
+
+  const output = await formatText(input)
+
+  // Compared whole rather than line by line: a line joined to its neighbour
+  // loses the paragraph break a doxygen reader needs, and that is the damage
+  // this case exists to catch.
+  assert.equal(output.split('\n').slice(0, header.split('\n').length).join('\n'), header)
+  assert.equal(await formatText(output), output)
+})
+
+run('a comment keeps its indentation relative to the block it sits in', async () => {
+  // Dedenting by the column the comment started at, rather than trimming each
+  // line, is what keeps the offsets: the block indent still comes from the
+  // printer and everything inside the comment is measured from it, which is why
+  // the closing marker lands back on the comment's own column.
+  const input = [
+    '%macro comment_case();',
+    '  %if 1 %then %do;',
+    '    /**',
+    '      @param [in] x described over',
+    '        a hanging continuation',
+    '',
+    '          data x; set y; run;',
+    '    **/',
+    '    %put x;',
+    '  %end;',
+    '%mend comment_case;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+
+  assert.match(
+    output,
+    /\n {4}\/\*\*\n {6}@param \[in\] x described over\n {8}a hanging continuation\n\n {10}data x; set y; run;\n {4}\*\*\/\n/
+  )
+})
+
+run('a starred comment is left as it was written', async () => {
+  // The star style puts a space before every marker, so the comment's own
+  // indentation is not the closer's column - a patch that assumed it was would
+  // shift the whole comment one space left on every run.
+  const header = ['/**', ' * @brief star style', ' * @param [in] x', ' *   continued', ' */'].join(
+    '\n'
+  )
+  const output = await formatText(`${header}\n%macro star_case();\n%mend star_case;\n`)
+
+  assert.equal(output.split('\n').slice(0, 5).join('\n'), header)
+  assert.equal(await formatText(output), output)
+})
+
+run('a starred comment nested in a block is left as it was written', async () => {
+  // The only shape where the dedent and the star handling act together: at
+  // column 0 the start column is 0, so the dedent cannot move a line and the
+  // two cannot disagree. Nested, a line is shortened by the start column and
+  // then re-indented by the printer, so the marker and the closer both land
+  // back on the column the author wrote them at - or they do not, which is what
+  // this asserts.
+  const comment = ['    /**', '     * @brief x', '     * @param [in] y', '     */']
+  const input = [
+    '%macro nested_star();',
+    '  %if 1 %then %do;',
+    ...comment,
+    '    %put x;',
+    '  %end;',
+    '%mend nested_star;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+  const lines = output.split('\n')
+  const start = lines.indexOf(comment[0])
+
+  assert.notEqual(start, -1, 'the comment was moved or rewritten')
+  assert.deepEqual(lines.slice(start, start + comment.length), comment)
+  assert.equal(await formatText(output), output)
+})
