@@ -102,8 +102,8 @@ const cache = new Map<string, unknown>()
 /** Locale bundles are only used for human-readable errors; absent is fine. */
 const bundles = new Map<string, string>()
 
-/** How many fetches one format may make before it gives up. */
-const maxFetches = 40
+/** How many fetches one format may make before it gives up, unless the call says. */
+const defaultMaxFetches = 40
 
 /** How long one fetch may take before the call fails, in milliseconds. */
 const defaultFetchTimeoutMs = 30_000
@@ -158,7 +158,18 @@ const bounded = async <T>(
       )
     }
 
-    throw error
+    // A failure that is not the abort - a CORS refusal, a host that does not
+    // resolve, a 200 carrying an HTML fallback - would otherwise reach the caller
+    // as the runtime's own `TypeError: Failed to fetch` or `SyntaxError: Unexpected
+    // token '<'`, naming neither the file nor the root, which is the opposite of
+    // what the docstring promises. The original error is kept as `cause`.
+    const wrapped = new Error(
+      `SAS language data could not be read: ${url}: ${(error as Error)?.message ?? error}`
+    )
+
+    ;(wrapped as Error & { cause?: unknown }).cause = error
+
+    throw wrapped
   } finally {
     clearTimeout(timer)
   }
@@ -265,6 +276,14 @@ export interface FormatOptions {
    * file. Raise it for a slow CDN; lower it for a host on the same machine.
    */
   fetchTimeoutMs?: number
+  /**
+   * How many files one format may fetch before it gives up. Defaults to 40.
+   *
+   * Each retry costs one file the caller did not have, so this is the ceiling on a
+   * first format against a data root that is missing a lot; a host that knows its
+   * tree is complete can lower it to fail sooner.
+   */
+  maxFetches?: number
   /** Case to give keywords. Defaults to `preserve`. */
   keywordCase?: 'upper' | 'lower' | 'preserve'
 }
@@ -314,6 +333,7 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
   const root = rootFor(options.dataRoot)
   const previous = dataRoot
   const timeoutMs = options.fetchTimeoutMs ?? defaultFetchTimeoutMs
+  const budget = options.maxFetches ?? defaultMaxFetches
 
   installLoader()
 
@@ -331,7 +351,7 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
       keywordCase: options.keywordCase ?? 'preserve'
     } as const
 
-    for (let attempt = 0; attempt <= maxFetches; attempt++) {
+    for (let attempt = 0; attempt <= budget; attempt++) {
       try {
         return await print(text, layout)
       } catch (error) {
@@ -343,7 +363,7 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
         // counts. Stop before the fetch that no attempt would follow: spending it
         // and then reporting the budget would tell the caller a file was missing
         // that had just been fetched.
-        if (attempt === maxFetches) break
+        if (attempt === budget) break
 
         await fetchInto(root, error.path, timeoutMs)
       }
@@ -353,7 +373,7 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
   }
 
   throw new Error(
-    `SAS language data is missing: formatting asked for more than ${maxFetches} files. ` +
+    `SAS language data is missing: formatting asked for more than ${budget} file(s). ` +
       `Check that the data root serves the whole pubsdata and data tree.`
   )
 }

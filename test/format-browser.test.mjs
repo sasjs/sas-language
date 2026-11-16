@@ -305,6 +305,61 @@ run(
 )
 
 run(
+  'stops at the fetch budget, and formats against the last file it fetches',
+  async ({ formatText }) => {
+    const text = [
+      'proc means data=work.foo;',
+      'var age;',
+      'run;',
+      'proc freq data=work.foo;',
+      'tables flag;',
+      'run;',
+      ''
+    ].join('\n')
+
+    // One procedure file per attempt, so a budget of one puts the boundary exactly
+    // between the two: the first file is fetched and formatted against, the second
+    // is the fetch the budget refuses to spend.
+    await assert.rejects(
+      () => formatText(text, { maxFetches: 1 }),
+      /asked for more than 1 file\(s\)/
+    )
+
+    const spent = requests.length
+
+    assert.equal(spent, 8, `expected the core set plus one file, got ${requests.join(', ')}`)
+    assert.ok(
+      requests.some((url) => /pubsdata\/Procedures\/en\/means\.json$/i.test(url)),
+      'the file the budget allowed was not fetched'
+    )
+    assert.ok(
+      !requests.some((url) => /pubsdata\/Procedures\/en\/freq\.json$/i.test(url)),
+      'the budget spent the fetch that no attempt would format against'
+    )
+
+    // and with the room for it, the next call finishes - one more file, no re-walk
+    requests = []
+
+    const formatted = await formatText(text)
+
+    assert.equal(
+      formatted,
+      [
+        'proc means data=work.foo;',
+        '  var age;',
+        'run;',
+        '',
+        'proc freq data=work.foo;',
+        '  tables flag;',
+        'run;',
+        ''
+      ].join('\n')
+    )
+    assert.equal(requests.length, 1, `expected the one missing file, got ${requests.join(', ')}`)
+  }
+)
+
+run(
   'names the file and the status when the data root does not answer',
   async ({ formatText }) => {
     await assert.rejects(
