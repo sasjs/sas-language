@@ -74,7 +74,9 @@ the documentation as its own chunk.
 
 ## Formatting
 
-`./format` exposes the formatter the server uses, without running the server - the reprint as a call, for hosts that cannot speak LSP to it, such as a CLI in CI. It is a node API, reading the vocabulary from disk; a browser editor keeps the webworker server it already runs, and a browser product asks a node host instead.
+`./format` exposes the formatter the server uses, without running the server - the reprint as a call, for hosts that cannot speak LSP to it, such as a CLI in CI.
+
+It has two builds behind one specifier. In node it reads the vocabulary from disk (below). A bundler that honours the `browser` condition gets `dist/format.browser.bundle.js` instead, which fetches the same files from a URL: the core set goes up front, and anything else the lexer asks for (a `PROC` step's procedure file, a vocabulary file from `data/`) is fetched on the miss and formatted again, so a program costs a handful of requests once and none afterwards. `dataRoot` is a URL there, defaulting to `/sas-language/`, and a failed fetch throws naming the file and the status rather than returning the buffer unchanged.
 
 ```ts
 import { formatText } from '@sasjs/sas-language/format'

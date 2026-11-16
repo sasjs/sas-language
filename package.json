@@ -21,6 +21,7 @@
     },
     "./format": {
       "types": "./dist/format.d.ts",
+      "browser": "./dist/format.browser.bundle.js",
       "default": "./dist/format.bundle.js"
     },
     "./data/*": "./data/*",
@@ -59,7 +60,9 @@
     "lint": "prettier --check .",
     "lint:fix": "prettier --write .",
     "release": "sasjs-release",
-    "build:format": "node ./scripts/build-format.mjs",
+    "build:format": "node ./scripts/build-format.mjs && node ./scripts/build-format-browser.mjs",
+    "build:format:node": "node ./scripts/build-format.mjs",
+    "build:format:browser": "node ./scripts/build-format-browser.mjs",
     "build:ship": "npm run build && npm run build:server && npm run build:format",
     "verify:pack": "node ./scripts/verify-pack.mjs"
   },
