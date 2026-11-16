@@ -23,6 +23,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { UPSTREAM } from './groups.mjs'
+import { patchUpstream } from './upstream-patches.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const work = join(root, '.upstream', 'server')
@@ -205,6 +206,7 @@ const patchSubBuildDispatch = () => {
 const build = (ref) => {
   prepareSource(ref)
   patchSubBuildDispatch()
+  patchUpstream()
 
   // The lockfile is committed upstream, so `npm ci` is both faster and the same
   // install the extension's own CI performs.

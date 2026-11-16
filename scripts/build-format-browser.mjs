@@ -23,6 +23,8 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { patchUpstream } from './upstream-patches.mjs'
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const upstream = join(root, '.upstream', 'server')
 const upstreamEntry = join(root, 'format', 'upstream.browser.ts')
@@ -58,6 +60,10 @@ if (!existsSync(esbuildModule)) {
       'the upstream tree has been fetched but not installed; run npm run build:server'
   )
 }
+
+// Same reason as the node build: this bundles the upstream source directly, so
+// the tree has to carry the patches even when the server build was reused.
+patchUpstream()
 
 const provenance = JSON.parse(readFileSync(join(root, 'provenance.json'), 'utf8'))
 const ref = provenance.upstreamRef.slice(0, 10)
