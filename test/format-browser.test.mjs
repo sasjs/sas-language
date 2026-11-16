@@ -57,7 +57,13 @@ let requests = []
  * a connection and never answers; `stallBody` answers the headers and then never
  * sends the body, which is a different failure a timeout has to cover too.
  */
-const installFetch = (root = '/sas-language/', refuse = '', stall = '', stallBody = '') => {
+const installFetch = (
+  root = '/sas-language/',
+  refuse = '',
+  stall = '',
+  stallBody = '',
+  broken = ''
+) => {
   requests = []
 
   globalThis.fetch = async (url, options = {}) => {
@@ -78,6 +84,11 @@ const installFetch = (root = '/sas-language/', refuse = '', stall = '', stallBod
           reject(error)
         })
       })
+    }
+
+    if (broken && request.startsWith(broken)) {
+      // what a browser throws for CORS, DNS or a dropped connection
+      throw new TypeError('Failed to fetch')
     }
 
     if (stallBody && request.startsWith(stallBody)) {
@@ -118,7 +129,7 @@ const run = (name, fn, options = {}) =>
   test(name, options.timeout ? { timeout: options.timeout } : {}, async (context) => {
     if (reason) return context.skip(reason)
 
-    installFetch(options.root, options.refuse, options.stall, options.stallBody)
+    installFetch(options.root, options.refuse, options.stall, options.stallBody, options.broken)
     await fn(await fresh())
   })
 
@@ -360,11 +371,41 @@ run(
 )
 
 run(
+  'names the file when the host itself fails',
+  async ({ formatText }) => {
+    // CORS, DNS or a dropped connection: the runtime's own error carries no URL, so
+    // the entry supplies it - and keeps the original as `cause`
+    await assert.rejects(
+      () => formatText(['data foo;', 'run;', ''].join('\n'), { dataRoot: '/broken' }),
+      (error) => {
+        assert.match(
+          error.message,
+          /^SAS language data could not be read: \/broken\/pubsdata\/procedures\.json: Failed to fetch$/
+        )
+        assert.ok(error.cause instanceof TypeError, 'the original error should be kept as cause')
+
+        return true
+      }
+    )
+  },
+  { root: '/sas-language/', broken: '/broken/', timeout: 10_000 }
+)
+
+run(
   'names the file and the status when the data root does not answer',
   async ({ formatText }) => {
+    // `assert.rejects` tests a RegExp against `String(error)`, which starts with
+    // "Error: ", so the anchor is applied to the message itself
     await assert.rejects(
       () => formatText(['data foo;', 'run;', ''].join('\n'), { dataRoot: '/missing' }),
-      /SAS language data is missing: \/missing\/pubsdata\/procedures\.json answered 404/
+      (error) => {
+        assert.match(
+          error.message,
+          /^SAS language data is missing: \/missing\/pubsdata\/procedures\.json answered 404/
+        )
+
+        return true
+      }
     )
   },
   { root: '/missing/', refuse: 'pubsdata/procedures.json' }

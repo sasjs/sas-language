@@ -138,6 +138,12 @@ const rootFor = (dataRoot?: string) => {
  * outcome. It does not carry the "serve the folders" advice the 404 does: a root
  * that accepted the connection and never answered is not a root with files absent,
  * and another `dataRoot` is not the fix.
+ *
+ * Wrapping covers the RUNTIME's failures - a CORS refusal, a host that does not
+ * resolve, a 200 carrying an HTML fallback - which otherwise reach the caller as
+ * `TypeError: Failed to fetch` with no URL. A response that ANSWERS is the reader's
+ * to describe: `read` decides the status, so a 404 keeps the sentence that names the
+ * file and the status rather than gaining "could not be read" on top of it.
  */
 const bounded = async <T>(
   url: string,
@@ -158,18 +164,20 @@ const bounded = async <T>(
       )
     }
 
-    // A failure that is not the abort - a CORS refusal, a host that does not
-    // resolve, a 200 carrying an HTML fallback - would otherwise reach the caller
-    // as the runtime's own `TypeError: Failed to fetch` or `SyntaxError: Unexpected
-    // token '<'`, naming neither the file nor the root, which is the opposite of
-    // what the docstring promises. The original error is kept as `cause`.
-    const wrapped = new Error(
-      `SAS language data could not be read: ${url}: ${(error as Error)?.message ?? error}`
-    )
+    // A SyntaxError is a body that is not JSON (an HTML fallback), a TypeError is the
+    // request itself failing; both are the runtime's, and both need the URL. Anything
+    // else is already a sentence this file wrote about this URL.
+    if ((error as Error)?.name === 'SyntaxError' || error instanceof TypeError) {
+      const wrapped = new Error(
+        `SAS language data could not be read: ${url}: ${(error as Error)?.message ?? error}`
+      )
 
-    ;(wrapped as Error & { cause?: unknown }).cause = error
+      ;(wrapped as Error & { cause?: unknown }).cause = error
 
-    throw wrapped
+      throw wrapped
+    }
+
+    throw error
   } finally {
     clearTimeout(timer)
   }
@@ -180,16 +188,25 @@ const fetchInto = async (root: string, path: string, timeoutMs: number): Promise
 
   if (cache.has(url)) return
 
-  const data = await bounded(url, timeoutMs, async (response) => {
-    if (!response.ok) {
-      throw new Error(
-        `SAS language data is missing: ${url} answered ${response.status}. ` +
-          `Serve the package's pubsdata and data folders under the data root, or pass \`dataRoot\` to formatText().`
-      )
-    }
+  // The status is decided outside the wrapper, so a 404 is described once. The body
+  // read stays inside it, because a stalled body is what the timer exists for.
+  const fetched = await bounded(
+    url,
+    timeoutMs,
+    async (response): Promise<{ ok: true; data: unknown } | { ok: false; status: number }> =>
+      response.ok
+        ? { ok: true, data: await response.json() }
+        : { ok: false, status: response.status }
+  )
 
-    return response.json()
-  })
+  if (!fetched.ok) {
+    throw new Error(
+      `SAS language data is missing: ${url} answered ${fetched.status}. ` +
+        `Serve the package's pubsdata and data folders under the data root, or pass \`dataRoot\` to formatText().`
+    )
+  }
+
+  const { data } = fetched
 
   cache.set(url, data)
 }
