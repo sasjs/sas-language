@@ -74,7 +74,9 @@ the documentation as its own chunk.
 
 ## Formatting
 
-`./format` exposes the formatter the server uses, without running the server - the reprint as a call, for hosts that cannot speak LSP to it, such as a CLI in CI. It is a node API, reading the vocabulary from disk; a browser editor keeps the webworker server it already runs, and a browser product asks a node host instead.
+`./format` exposes the formatter the server uses, without running the server - the reprint as a call, for hosts that cannot speak LSP to it, such as a CLI in CI.
+
+It has two builds behind one specifier. In node it reads the vocabulary from disk (below). A bundler that honours the `browser` condition gets `dist/format.browser.bundle.js` instead, which fetches the same files from a URL: the core set goes up front, and anything else the lexer asks for (a `PROC` step's procedure file, a vocabulary file from `data/`) is fetched on the miss and formatted again, so a program costs a handful of requests once and none afterwards. `dataRoot` is a URL there, defaulting to `/sas-language/`, and a failed fetch rejects rather than returning the buffer unchanged: a `404` names the file and the status, and a host that does not answer within `fetchTimeoutMs` (30000 by default, and an option on the call) is aborted, with the rejection naming the URL and the option. Formats run one at a time, so a stalled root costs its own call and not the ones behind it. TypeScript sees that signature too when the consumer's tsconfig names the condition (`"customConditions": ["browser"]`, which is what a bundler taking the browser build has to do anyway): `fetchTimeoutMs` is then accepted and `dataRoot` is documented as a URL.
 
 ```ts
 import { formatText } from '@sasjs/sas-language/format'

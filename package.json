@@ -20,6 +20,10 @@
       "default": "./dist/logs.js"
     },
     "./format": {
+      "browser": {
+        "types": "./dist/format.browser.d.ts",
+        "default": "./dist/format.browser.bundle.js"
+      },
       "types": "./dist/format.d.ts",
       "default": "./dist/format.bundle.js"
     },
@@ -59,7 +63,9 @@
     "lint": "prettier --check .",
     "lint:fix": "prettier --write .",
     "release": "sasjs-release",
-    "build:format": "node ./scripts/build-format.mjs",
+    "build:format": "node ./scripts/build-format.mjs && node ./scripts/build-format-browser.mjs",
+    "build:format:node": "node ./scripts/build-format.mjs",
+    "build:format:browser": "node ./scripts/build-format-browser.mjs",
     "build:ship": "npm run build && npm run build:server && npm run build:format",
     "verify:pack": "node ./scripts/verify-pack.mjs"
   },

@@ -8,10 +8,11 @@
  * just received has to spawn a whole process for it. This entry point is the
  * call those host-side consumers share.
  *
- * It is a **node** API: it reads the vocabulary from disk with `node:fs`, and the
- * published module is built for node. A browser cannot load it, and does not
- * need to - a browser editor keeps the webworker language server it already runs,
- * and a browser product that wants this formatter asks a node host for it.
+ * This file is the **node** build: it reads the vocabulary from disk with
+ * `node:fs`. The `./format` specifier also carries a `browser` condition -
+ * `src/format.browser.ts` - which is the same call with the vocabulary fetched
+ * over HTTP, for a browser that wants to format in place rather than post the
+ * program to a node host. Nothing outside this paragraph differs between them.
  *
  * Formatting one buffer takes four steps, in this order, and none is optional:
  *
@@ -55,6 +56,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { applyEdits, documentFrom } from './textDocument.js'
+import { applyKeywordCase } from './format.keywordCase.js'
 
 import { Formatter, Model, ResLoader, SyntaxProvider } from 'upstream-formatter'
 
@@ -173,64 +175,6 @@ const assertDataRoot = (root: string) => {
         `Install this package's server tree or pass \`dataRoot\` to formatText().`
     )
   }
-}
-
-/** The token styles the lexer uses for words SAS does not let you spell freely. */
-const KEYWORD_STYLES = new Set([
-  'keyword',
-  'sec-keyword',
-  'proc-name',
-  'macro-keyword',
-  'macro-sec-keyword'
-])
-
-/**
- * Gives keywords the requested case, using the lexer's own token table.
- *
- * A vocabulary of statement names was the first attempt and it was wrong in a way
- * worth recording: the four statement files carry no `ELSE`, no `THEN` and none of
- * the statements that belong to a procedure (`VAR`, `CLASS`), so the output came
- * back half cased - `data` lowercased next to `VAR` untouched. The lexer already
- * knows: every token carries a style, and the ones above are the words SAS reserves.
- *
- * So the printed text is lexed once more - no printing, just the token table - and
- * the spans it marks are rewritten. Editing from the end of each line backwards
- * keeps the earlier offsets valid, and a token holding no letters (a semicolon, a
- * `%` sigil) is skipped rather than cased into nonsense.
- */
-const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') => {
-  const transform = (word: string) =>
-    keywordCase === 'upper' ? word.toUpperCase() : word.toLowerCase()
-
-  const model = new Model(documentFrom(text))
-  const syntaxProvider = new SyntaxProvider(model)
-  const lastLine = model.getLineCount() - 1
-  syntaxProvider.add({
-    text: '',
-    removedText: '',
-    oldRange: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
-    newRange: {
-      start: { line: 0, column: 0 },
-      end: { line: lastLine, column: model.getColumnCount(lastLine) }
-    }
-  })
-
-  return text
-    .split('\n')
-    .map((line, index) => {
-      const tokens = syntaxProvider.getSyntax(index) ?? []
-      let result = line
-      for (let at = tokens.length - 1; at >= 0; at--) {
-        const token = tokens[at]
-        if (!KEYWORD_STYLES.has(token.style)) continue
-        const end = at === tokens.length - 1 ? line.length : tokens[at + 1].start
-        const word = line.slice(token.start, end)
-        if (!/[A-Za-z]/.test(word)) continue
-        result = result.slice(0, token.start) + transform(word) + result.slice(end)
-      }
-      return result
-    })
-    .join('\n')
 }
 
 /**

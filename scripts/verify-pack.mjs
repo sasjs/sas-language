@@ -54,8 +54,15 @@ const promised = () => {
       return
     }
     for (const [condition, value] of Object.entries(target ?? {})) {
-      // Only the conditions a runtime or a type resolver actually reads.
-      if (condition === 'types' || condition === 'default' || condition === 'import') {
+      // Only the conditions a runtime or a type resolver actually reads. The
+      // browser one counts: a bundler that finds `browser` first would load a
+      // path this check never looked at, which is the failure 0.5.0 shipped.
+      if (
+        condition === 'types' ||
+        condition === 'default' ||
+        condition === 'import' ||
+        condition === 'browser'
+      ) {
         addTargets(value, key)
       }
     }
