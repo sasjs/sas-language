@@ -203,6 +203,17 @@ export interface FormatOptions {
 }
 
 /**
+ * Formats run one at a time.
+ *
+ * The core's loader is a single object shared by every module the bundle carries,
+ * so the root a call assigns is visible to any other call in flight: two calls with
+ * different roots would swap each other's vocabulary and format with the wrong
+ * data, with nothing to see afterwards. Queueing costs one call's latency behind
+ * the one before it, and nothing else.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+/**
  * Formats a SAS program in the browser and returns the text.
  *
  * Fetches what the formatter needs, formats, and retries on a miss - so the first
@@ -216,7 +227,21 @@ export interface FormatOptions {
  * formatter that returned the buffer unchanged in that case would look like it
  * had worked.
  */
-export const formatText = async (text: string, options: FormatOptions = {}): Promise<string> => {
+export const formatText = (text: string, options: FormatOptions = {}): Promise<string> => {
+  const run = queue.then(() => formatNow(text, options))
+
+  // the chain has to outlive a call that throws, or one failed format would stop
+  // every later one from starting
+  queue = run.then(
+    () => undefined,
+    () => undefined
+  )
+
+  return run
+}
+
+/** One call's work, with every earlier call finished behind it. */
+const formatNow = async (text: string, options: FormatOptions): Promise<string> => {
   const root = rootFor(options.dataRoot)
   const previous = dataRoot
 

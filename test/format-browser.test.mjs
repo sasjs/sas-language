@@ -173,6 +173,29 @@ run('keeps two data roots apart in one instance', async ({ formatText }) => {
   )
 })
 
+run('keeps two data roots apart when both calls are in flight', async ({ formatText }) => {
+  const text = ['data foo;', 'run;', ''].join('\n')
+
+  // Neither call is awaited before the second starts: that is the shape the
+  // module-wide root cannot survive on its own, because the loader reads whichever
+  // root the most recent call assigned. Queued, the `/a` call finishes before `/b`
+  // begins, so every `/a` request comes first and each call formats with its own
+  // vocabulary.
+  const first = formatText(text, { dataRoot: '/a' })
+  const second = formatText(text, { dataRoot: '/b' })
+
+  const [a, b] = await Promise.all([first, second])
+
+  assert.equal(a, text)
+  assert.equal(b, text)
+
+  const lastA = requests.map((url) => url.startsWith('/a/')).lastIndexOf(true)
+  const firstB = requests.map((url) => url.startsWith('/b/')).indexOf(true)
+
+  assert.ok(lastA >= 0 && firstB >= 0, `both roots were not fetched: ${requests.join(', ')}`)
+  assert.ok(lastA < firstB, `the calls overlapped: ${requests.join(', ')}`)
+})
+
 run(
   'names the file and the status when the data root does not answer',
   async ({ formatText }) => {
