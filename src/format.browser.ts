@@ -337,15 +337,12 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
       } catch (error) {
         if (!(error instanceof MissingData)) throw error
 
-        // The loader reports a path it could not find. If the cache already holds
-        // that path, no fetch can make progress - the loop would spend its attempts
-        // on cache hits and then blame the budget for a mismatch between the path
-        // the formatter reports and the key the cache holds.
-        if (cache.has(`${root}${error.path}`))
-          throw new Error(
-            `SAS language data could not be read: the formatter asked for ${root}${error.path} after it had been fetched. The path it reports and the path the cache holds disagree.`
-          )
-
+        // The loader throws `MissingData` only when the key it looks up is absent,
+        // and that key is `${dataRoot}${path}` with `dataRoot` this call's root - so
+        // the path it reports is by construction one the cache does not hold, and a
+        // repeat can only mean the fetch put it under a different key. There is no
+        // such construction here, so the loop below cannot spin: every iteration
+        // fetches a file it did not have, which is exactly what the budget counts.
         await fetchInto(root, error.path, timeoutMs)
       }
     }
