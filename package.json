@@ -20,8 +20,11 @@
       "default": "./dist/logs.js"
     },
     "./format": {
+      "browser": {
+        "types": "./dist/format.browser.d.ts",
+        "default": "./dist/format.browser.bundle.js"
+      },
       "types": "./dist/format.d.ts",
-      "browser": "./dist/format.browser.bundle.js",
       "default": "./dist/format.bundle.js"
     },
     "./data/*": "./data/*",

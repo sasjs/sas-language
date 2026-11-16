@@ -54,9 +54,10 @@ let requests = []
  * the loader relies on. `refuse` answers 404 for one named path, so a test can
  * describe a root that is missing a file rather than one that is missing
  * entirely. `stall` never settles for a named path, which is the host that accepts
- * a connection and never answers.
+ * a connection and never answers; `stallBody` answers the headers and then never
+ * sends the body, which is a different failure a timeout has to cover too.
  */
-const installFetch = (root = '/sas-language/', refuse = '', stall = '') => {
+const installFetch = (root = '/sas-language/', refuse = '', stall = '', stallBody = '') => {
   requests = []
 
   globalThis.fetch = async (url, options = {}) => {
@@ -77,6 +78,22 @@ const installFetch = (root = '/sas-language/', refuse = '', stall = '') => {
           reject(error)
         })
       })
+    }
+
+    if (stallBody && request.startsWith(stallBody)) {
+      return {
+        ok: true,
+        status: 200,
+        // the headers arrived; the body never does
+        json: () =>
+          new Promise((resolve, reject) => {
+            options.signal?.addEventListener('abort', () => {
+              const error = new Error('aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          })
+      }
     }
 
     if (relativePath === refuse) {
@@ -101,9 +118,25 @@ const run = (name, fn, options = {}) =>
   test(name, options.timeout ? { timeout: options.timeout } : {}, async (context) => {
     if (reason) return context.skip(reason)
 
-    installFetch(options.root, options.refuse, options.stall)
+    installFetch(options.root, options.refuse, options.stall, options.stallBody)
     await fn(await fresh())
   })
+
+test('ships the browser declaration the export map promises', (context) => {
+  if (reason) return context.skip(reason)
+
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
+  const format = manifest.exports['./format']
+  const types = readFileSync(path.join(ROOT, 'dist', 'format.browser.d.ts'), 'utf8')
+
+  // `browser` has to be matched before the top-level `types`, which TypeScript
+  // reads first whatever the consumer's conditions: nested under it, the browser
+  // signature is unreachable and a browser consumer is checked against the node one.
+  assert.equal(Object.keys(format)[0], 'browser')
+  assert.equal(format.browser.types, './dist/format.browser.d.ts')
+  assert.match(types, /fetchTimeoutMs\?: number/)
+  assert.match(types, /dataRoot\?: string/)
+})
 
 run('formats a DATA step from fetched data', async ({ formatText }) => {
   const output = await formatText(
@@ -233,6 +266,31 @@ run(
     assert.equal(second.value, text)
   },
   { root: '/sas-language/', stall: '/slow/', timeout: 10_000 }
+)
+
+run(
+  'fails a body that stalls after the headers',
+  async ({ formatText }) => {
+    const text = ['data foo;', 'run;', ''].join('\n')
+
+    // A host that answers 200 and then never sends the body: the request itself
+    // settles, so a timer around the fetch alone would miss it and the queue would
+    // stay held by the pending read.
+    const stalled = formatText(text, { dataRoot: '/slow-body', fetchTimeoutMs: 20 })
+    const after = formatText(text, { dataRoot: '/sas-language/' })
+
+    const [first, second] = await Promise.allSettled([stalled, after])
+
+    assert.equal(first.status, 'rejected')
+    assert.match(
+      first.reason.message,
+      /SAS language data could not be read: \/slow-body\/pubsdata\/procedures\.json did not answer within 0\.02s/
+    )
+
+    assert.equal(second.status, 'fulfilled')
+    assert.equal(second.value, text)
+  },
+  { root: '/sas-language/', stallBody: '/slow-body/', timeout: 10_000 }
 )
 
 run(

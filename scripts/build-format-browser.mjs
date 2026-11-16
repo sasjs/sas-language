@@ -112,13 +112,10 @@ rmSync(`${outfile}.map`, { force: true })
 // `tsc` emits `dist/format.browser.js` for the same source, and that file
 // imports the two bundle-time specifiers only this script resolves - so it is of
 // no use in a tarball and would shadow the module the export map names if it
-// were left beside it.
-for (const leftover of [
-  'format.browser.js',
-  'format.browser.js.map',
-  'format.browser.d.ts',
-  'format.browser.d.ts.map'
-]) {
+// were left beside it. The declarations ARE shipped: they describe this entry's
+// signature (`dataRoot` as a URL, `fetchTimeoutMs`) which the node build's
+// `format.d.ts` does not, and the export map names them under `browser`.
+for (const leftover of ['format.browser.js', 'format.browser.js.map']) {
   rmSync(join(root, 'dist', leftover), { force: true })
 }
 

@@ -115,26 +115,36 @@ const rootFor = (dataRoot?: string) =>
   (dataRoot ?? defaultDataRoot).endsWith('/') ? (dataRoot ?? defaultDataRoot) : `${dataRoot}/`
 
 /**
- * One fetch, bounded.
+ * One request, bounded end to end: the fetch AND the body read.
  *
  * A request that never settles - a connection that stalls, a host that accepts and
  * never answers - would otherwise hold the call open forever, and because formats
  * run one at a time it would hold every later call open with it: the Format button
- * would do nothing, with no error anywhere. The timer aborts the request so the
- * call fails where a reader can see it and the queue moves on.
+ * would do nothing, with no error anywhere. A host can also send the headers and
+ * then stall the body, so the timer has to cover the read as well; it is cleared
+ * only once the caller's `read` has finished with the response.
+ *
+ * The abort is reported as an error naming the URL and the option that changes the
+ * outcome. It does not carry the "serve the folders" advice the 404 does: a root
+ * that accepted the connection and never answered is not a root with files absent,
+ * and another `dataRoot` is not the fix.
  */
-const boundedFetch = async (url: string, timeoutMs: number): Promise<Response> => {
+const bounded = async <T>(
+  url: string,
+  timeoutMs: number,
+  read: (response: Response) => Promise<T>
+): Promise<T> => {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    return await fetch(url, { signal: controller.signal })
+    return await read(await fetch(url, { signal: controller.signal }))
   } catch (error) {
     if ((error as Error)?.name === 'AbortError') {
       throw new Error(
         `SAS language data could not be read: ${url} did not answer within ${
           timeoutMs / 1000
-        }s. Serve the package's pubsdata and data folders under the data root, or pass \`dataRoot\` and \`fetchTimeoutMs\` to formatText().`
+        }s. Raise \`fetchTimeoutMs\` if the host is slow, or check that the data root is answering.`
       )
     }
 
@@ -145,18 +155,22 @@ const boundedFetch = async (url: string, timeoutMs: number): Promise<Response> =
 }
 
 const fetchInto = async (root: string, path: string, timeoutMs: number): Promise<void> => {
-  if (cache.has(`${root}${path}`)) return
+  const url = `${root}${path}`
 
-  const response = await boundedFetch(`${root}${path}`, timeoutMs)
+  if (cache.has(url)) return
 
-  if (!response.ok) {
-    throw new Error(
-      `SAS language data is missing: ${root}${path} answered ${response.status}. ` +
-        `Serve the package's pubsdata and data folders under the data root, or pass \`dataRoot\` to formatText().`
-    )
-  }
+  const data = await bounded(url, timeoutMs, async (response) => {
+    if (!response.ok) {
+      throw new Error(
+        `SAS language data is missing: ${url} answered ${response.status}. ` +
+          `Serve the package's pubsdata and data folders under the data root, or pass \`dataRoot\` to formatText().`
+      )
+    }
 
-  cache.set(`${root}${path}`, await response.json())
+    return response.json()
+  })
+
+  cache.set(url, data)
 }
 
 /**
