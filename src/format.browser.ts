@@ -339,10 +339,12 @@ const formatNow = async (text: string, options: FormatOptions): Promise<string> 
 
         // The loader throws `MissingData` only when the key it looks up is absent,
         // and that key is `${dataRoot}${path}` with `dataRoot` this call's root - so
-        // the path it reports is by construction one the cache does not hold, and a
-        // repeat can only mean the fetch put it under a different key. There is no
-        // such construction here, so the loop below cannot spin: every iteration
-        // fetches a file it did not have, which is exactly what the budget counts.
+        // every iteration fetches a file it did not have, which is what the budget
+        // counts. Stop before the fetch that no attempt would follow: spending it
+        // and then reporting the budget would tell the caller a file was missing
+        // that had just been fetched.
+        if (attempt === maxFetches) break
+
         await fetchInto(root, error.path, timeoutMs)
       }
     }
