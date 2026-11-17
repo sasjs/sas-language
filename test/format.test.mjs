@@ -469,3 +469,166 @@ run('a starred comment nested in a block is left as it was written', async () =>
   assert.deepEqual(lines.slice(start, start + comment.length), comment)
   assert.equal(await formatText(output), output)
 })
+
+run('a blank line under a doxygen header survives', async () => {
+  // The header is a statement of its own, and the printer joined it to the
+  // statement below with a single break, so the blank line an author leaves
+  // between the two - the one every @sasjs/core file has - disappeared on
+  // every format.
+  const input = ['/**', '  @file', '  @brief one line', '**/', '', '%put x;', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a blank line between a comment and the statement below it survives', async () => {
+  // The same break inside a block, where the comment is attached to the
+  // statement rather than standing on its own.
+  const input = ['data work.foo;', '  /* split out */', '', '  x=1;', 'run;', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a cards section is printed as it was written', async () => {
+  // The body of a cards section is data. It used to be reflowed as statements
+  // - the indentation dropped, and `;;;;` split into one semicolon on the last
+  // data line plus three lines of `;` - which no longer reads as a terminator
+  // to anything scanning for one.
+  const section = ['parmcards4;', '  %put hello;', ';;;;']
+  const input = ['filename ft15f001 temp;', ...section, '', '%put done;', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.deepEqual(output.split('\n').slice(1, 4), section)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a datalines section inside a DATA step keeps its records and terminator', async () => {
+  // The formatter moved the section's closing semicolon onto its last record -
+  // `3,4` came back as `3,4;` - so it changed the data as well as the layout,
+  // and the statement after the step ran against a corrupted dataset.
+  const records = ['1,2', '3,4']
+  const input = [
+    'data work.foo;',
+    '  infile datalines dsd;',
+    '  input a b;',
+    '  datalines;',
+    ...records,
+    ';',
+    'run;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.deepEqual(output.split('\n').slice(4, 6), records)
+  assert.equal(await formatText(output), output)
+})
+
+run('a cards section inside a block keeps its body and terminator', async () => {
+  // The section is printed as it was written, including its own indentation -
+  // see the patch that does it. What must not change is the data: the records,
+  // their leading columns, and the `;;;;` terminator.
+  const section = ['  parmcards4;', '      x', '  ;;;;']
+  const input = [
+    '%macro nested_cards();',
+    '  %if 1 %then %do;',
+    '    filename f temp;',
+    ...section,
+    '  %end;',
+    '%mend nested_cards;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+  const lines = output.split('\n')
+
+  for (const line of section) {
+    assert.ok(
+      lines.includes(line),
+      `the section must survive as written: ${JSON.stringify(line)} missing from ${JSON.stringify(output)}`
+    )
+  }
+  assert.equal(await formatText(output), output)
+})
+
+run('a parmcards4 section carries its own semicolons as data', async () => {
+  // The section carries a SAS program, so a lone `;` record is an empty
+  // statement in it - not the end of the section. Ending there reflowed the
+  // rest of the carried program and split the real terminator into statements.
+  const section = ['parmcards4;', '  data x;', '  ;', '  run;', ';;;;']
+  const input = ['filename ft15f001 temp;', ...section, ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.deepEqual(output.split('\n').slice(1, 6), section)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a datalines record that begins with blanks and a semicolon is data', async () => {
+  // SAS ends a plain datalines section only at a line whose FIRST character is
+  // a semicolon; leading blanks make the line a record. Reading the trimmed
+  // line ended the section mid-data and folded the rest into a statement.
+  const records = ['  ab', '   ;cd', '  ef']
+  const input = [
+    'data work.foo;',
+    '  infile datalines dsd;',
+    '  input a $;',
+    '  datalines;',
+    ...records,
+    ';',
+    '',
+    'run;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+
+  assert.deepEqual(output.split('\n').slice(4, 7), records)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a macro that returns a value keeps its %mend on a line of its own', async () => {
+  // `&x %mend f;` is how every value-returning macro in @sasjs/core ends. The
+  // return value has no semicolon, so nothing ended the statement and the
+  // printer glued the closing keyword onto the value's line - which both read
+  // wrongly and tripped `hasMacroNameInMend` with a "Missing %mend" warning.
+  const input = [
+    '%macro mf_value();',
+    '  %local x;',
+    '  %let x=1;',
+    '',
+    '  &x',
+    '%mend mf_value;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a cards section followed by a DATA step does not gain a blank line', async () => {
+  // A statement that opens a region already prints with a blank line before it.
+  // Carrying the author's blank as well printed two, and a second format added
+  // a third, so the buffer grew on every run.
+  const section = ['cards4;', 'x', ';;;;']
+  const input = [...section, 'data b;', '  y=1;', 'run;', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.deepEqual(output.split('\n').slice(0, 4), [...section, ''])
+  assert.equal(output.split('\n')[4], 'data b;')
+  const again = await formatText(output)
+  assert.equal(again, output)
+})

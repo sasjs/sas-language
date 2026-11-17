@@ -141,6 +141,284 @@ const MACRO_CALL_END = [
 ]
 
 /**
+ * A blank line after a standalone comment, carried on the statement.
+ *
+ * A comment is printed as a statement of its own, and the branch that finalises
+ * it never looks at what follows, so the pass that preserves a blank line
+ * between two statements does not run for it: the break an author leaves under
+ * a doxygen header, or between a comment and the code it introduces,
+ * disappears. `blankLineAfter` carries it to the printer, which renders it as
+ * one more hardline. A flag rather than a `raw-data` child because a child goes
+ * through `fill`, whose separator prints as a trailing space on the comment's
+ * last line - the one thing a formatter must never add.
+ *
+ * More than one line between the comment's end and the next token means the
+ * author left a blank line there; a comment written directly above the next
+ * statement is left alone.
+ */
+const STANDALONE_COMMENT_BLANK_LINE = [
+  `      } else if (currentStatement.children.length === 1 && isComment(node)) {
+        // standalone comment, treat as a whole statement
+        prevStatement = currentStatement;`,
+  `      } else if (currentStatement.children.length === 1 && isComment(node)) {
+        // standalone comment, treat as a whole statement
+        const afterComment = tokens[i + 1];
+        if (afterComment && afterComment.start.line - node.end.line > 1) {
+          // preserve the blank line the author left after the comment
+          currentStatement.blankLineAfter = true;
+        }
+        prevStatement = currentStatement;`
+]
+
+/**
+ * The field the patch above sets. It is read by the printer, which the type
+ * has to describe.
+ */
+const STATEMENT_BLANK_LINE_AFTER = [
+  `export interface Statement {
+  type: "statement";
+  name: string;
+  children: Token[];
+  leadingComment?: Token;
+}`,
+  `export interface Statement {
+  type: "statement";
+  name: string;
+  children: Token[];
+  leadingComment?: Token;
+  blankLineAfter?: boolean;
+}`
+]
+
+/**
+ * The same paragraph break, for a comment the parser hands to a statement as
+ * `leadingComment`.
+ *
+ * Inside a region, a comment that opens the region is attached to the statement
+ * that follows it, and the printer joins the two with a single `hardline`, so a
+ * blank line between them disappears. `first` is the statement's own first
+ * token: a gap of more than one line from the comment's end means the source
+ * had a blank line there, and one more `hardline` carries it.
+ *
+ * The gap is measured only when there is a token to measure from. A statement
+ * reaches this function with at least one child - the printer dispatches on
+ * `node.children?.length` - so the `first` operand is guarded for the shape the
+ * AST does not currently produce rather than because it occurs: `"start" in
+ * undefined` throws from inside the print pass, and a formatter that throws has
+ * rewritten nothing and said nothing.
+ */
+const LEADING_COMMENT_BLANK_LINE = [
+  `  return node.leadingComment
+    ? [printComment(node.leadingComment), hardline, statement]
+    : statement;`,
+  `  if (!node.leadingComment) {
+    return node.blankLineAfter ? [statement, hardline] : statement;
+  }
+
+  const commentGap =
+    first && "start" in first && first.start
+      ? first.start.line - node.leadingComment.end.line
+      : 0;
+
+  return [
+    printComment(node.leadingComment),
+    hardline,
+    ...(commentGap > 1 ? [hardline] : []),
+    statement,
+    ...(node.blankLineAfter ? [hardline] : []),
+  ];`
+]
+
+/**
+ * A cards section is data, and is printed exactly as it was written.
+ *
+ * `datalines`, `cards`, `lines` and their `4` variants open a section whose
+ * body is not SAS code to the printer's eyes until the lexer marks it
+ * `cards-data`, and the lexer only does that once its own state machine has
+ * entered a cards block. In open code - `filename ft15f001 temp; parmcards4;`
+ * with the body and the terminator that follow, which is how the macro tests
+ * stage a program - it never does, so every line of the body was reflowed as
+ * statements: indentation was dropped and the `;;;;` terminator became one
+ * semicolon appended to the last data line plus three lines of `;`.
+ *
+ * SAS still runs that, but the file no longer says what it meant, and a reader
+ * that looks for a line holding only `;;;;` - the linter's data-section scan is
+ * one - then never finds it, treats everything to the end of the buffer as
+ * data, and reports no macro invocations at all. `noUnusedMacros` reads that as
+ * "none of these declarations are used" and deletes the whole header list.
+ *
+ * It is worse than layout. The semicolon a `datalines;` block ends with is
+ * appended to its last record, so `3,4` is read back as `3,4;` - the formatter
+ * changed the data, silently, in a file whose whole purpose is to carry it.
+ *
+ * So a statement that opens a cards section is rewritten as one `raw-data`
+ * token covering the section through its terminator, which the printer already
+ * prints verbatim (that is the path a `cards-data` token takes), and the tokens
+ * inside it are skipped. The terminator is read the way SAS reads it: for the
+ * `4` variants a line of four or more semicolons, which may be indented - every
+ * macro in the corpus that stages a program inside a `%do` block writes its
+ * `;;;;` at the block's indent - and for a plain section a line whose first
+ * character is a semicolon, where a leading blank makes the line data. A lone
+ * `;` record inside a `parmcards4` block is an empty statement in the program
+ * the section carries, never the end of the section. A section that is never
+ * closed is left to the printer's usual handling.
+ *
+ * The token starts at column 0 of the keyword's line, so the author's own
+ * indentation travels with the text: a raw-data statement is printed with
+ * `markAsRoot`, which stops the doc printer re-indenting it, so a section that
+ * only kept its body would come back flush left inside the DATA step it belongs
+ * to.
+ *
+ * That also means a cards section is never re-indented. A `parmcards4;` written
+ * inside a `%do` block keeps the column the author gave it, even where the
+ * printer moves its siblings, and a second format leaves it there - which is
+ * not the layout of the surrounding block. It is deliberate: the body is data,
+ * its leading columns are the author's, and aligning the keyword with its
+ * siblings means shifting every record by the same amount. The alternative this
+ * replaces - reflowing the section as statements - is what rewrote the records.
+ * The section's layout belongs to whoever wrote it.
+ */
+const CARDS_SECTION_VERBATIM = [
+  `      quoting = preserveQuoting(quoting, currentStatement, model);
+      if (quoting >= 0) {
+        continue;
+      }
+
+      //#region --- Check for statement end`,
+  `      quoting = preserveQuoting(quoting, currentStatement, model);
+      if (quoting >= 0) {
+        continue;
+      }
+
+      //#region --- Preserve a cards section verbatim
+      if (
+        node.type === "sep" &&
+        node.text === ";" &&
+        currentStatement.children.length === 2 &&
+        /^(datalines|cards|lines|parmcards)4?$/i.test(currentStatement.name)
+      ) {
+        const four = /4$/i.test(currentStatement.name);
+        const firstToken = currentStatement.children[0];
+        const start =
+          "start" in firstToken && firstToken.start
+            ? { line: firstToken.start.line, column: 0 }
+            : node.start;
+        let line = node.end.line + 1;
+        let sectionEnd: { line: number; column: number } | undefined;
+        while (line < model.getLineCount()) {
+          const content = model.getLine(line).replace(/\\r?\\n$/, "");
+          // SAS ends a *4 section at a line of four or more semicolons, and a
+          // plain section at a line whose FIRST character is a semicolon - a
+          // leading blank there makes the line data, so the untrimmed line is
+          // what that test reads. The *4 test is content-based because the
+          // terminator arrives indented in the corpus (every macro that stages a
+          // program inside a %do block writes its ;;;; at the block's indent),
+          // and a lone semicolon inside a parmcards4 block is an empty statement
+          // in the program the section carries, not its end.
+          const ends = four
+            ? /^;{4,}$/.test(content.trim())
+            : content.startsWith(";");
+          if (ends) {
+            sectionEnd = { line, column: content.length };
+            break;
+          }
+          line++;
+        }
+        if (start && sectionEnd) {
+          while (
+            i + 1 < tokens.length &&
+            tokens[i + 1].start.line <= sectionEnd.line
+          ) {
+            i++;
+          }
+          currentStatement.children = [
+            {
+              type: "raw-data",
+              text: model.getText({ start, end: sectionEnd }),
+              start,
+              end: sectionEnd,
+            },
+          ];
+          const afterSection = tokens[i + 1];
+          // A statement that opens a region (DATA, PROC, %macro) is printed with
+          // a blank line of its own before it, so the author's blank line there
+          // is already carried: adding ours as well printed two, and a second
+          // format added a third.
+          const afterStartsRegion =
+            !!afterSection &&
+            (afterSection.type === "sec-keyword" ||
+              afterSection.type === "macro-sec-keyword") &&
+            (() => {
+              const block = syntaxProvider.getFoldingBlock(
+                afterSection.start.line,
+                afterSection.start.column,
+                true,
+                true,
+                true
+              );
+              return (
+                !!block &&
+                block.startLine === afterSection.start.line &&
+                block.startCol === afterSection.start.column
+              );
+            })();
+          if (
+            afterSection &&
+            !afterStartsRegion &&
+            afterSection.start.line - sectionEnd.line > 1
+          ) {
+            // the blank line the author left after the terminator
+            currentStatement.children.push({
+              type: "raw-data",
+              text: "\\n",
+              start: sectionEnd,
+              end: afterSection.start,
+            });
+          }
+          prevStatement = currentStatement;
+          currentStatement = undefined;
+          continue;
+        }
+      }
+      //#endregion ---
+
+      //#region --- Check for statement end`
+]
+
+/**
+ * A macro that returns a value ends its last statement without a semicolon -
+ * `%macro f(); &x %mend f;` - which is how every `mf_` function in @sasjs/core
+ * is written. Nothing in the parser ended that statement, so the expression
+ * swallowed the `%mend`: the printer then joined them (`&x %mend f;` on one
+ * line), the closing keyword stopped being a statement the rules could see
+ * (`hasMacroNameInMend` reports "Missing %mend statement"), and the region was
+ * left open - which is why the `%mend` came back indented as part of the body.
+ *
+ * A `%mend` always starts a statement of its own, so the statement in progress
+ * is finished when one arrives. The region bookkeeping then runs where it
+ * belongs: on the `%mend` statement's own end.
+ */
+const MEND_ENDS_THE_STATEMENT = [
+  `      //#region --- Check for statement start
+      if (!currentStatement) {`,
+  `      // A %mend starts a statement of its own, so a statement still open when
+      // one arrives is finished - the semicolon-less return value of a macro
+      // function otherwise swallows the keyword, which the printer then shares
+      // its line with and the rules stop seeing.
+      if (
+        currentStatement &&
+        currentStatement.children.length &&
+        /^%mend$/i.test(node.text)
+      ) {
+        prevStatement = currentStatement;
+        currentStatement = undefined;
+      }
+
+      //#region --- Check for statement start
+      if (!currentStatement) {`
+]
+
+/**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
  * `applied` is the marker that says the file already carries the patch. It has
@@ -159,6 +437,36 @@ const PATCHES = [
     name: 'standalone macro calls end at their closing parenthesis',
     replace: MACRO_CALL_END,
     applied: 'const standaloneMacroCall = completeMacroCall &&'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a semicolon-less return value ends at %mend',
+    replace: MEND_ENDS_THE_STATEMENT,
+    applied: 'A %mend starts a statement of its own'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'the statement type can mark a blank line after a comment',
+    replace: STATEMENT_BLANK_LINE_AFTER,
+    applied: '  blankLineAfter?: boolean;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a standalone comment keeps the blank line after it',
+    replace: STANDALONE_COMMENT_BLANK_LINE,
+    applied: 'currentStatement.blankLineAfter = true;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a cards section is printed verbatim, terminator included',
+    replace: CARDS_SECTION_VERBATIM,
+    applied: '//#region --- Preserve a cards section verbatim'
+  },
+  {
+    file: 'server/src/sas/formatter/printer.ts',
+    name: 'a leading comment keeps the blank line before its statement',
+    replace: LEADING_COMMENT_BLANK_LINE,
+    applied: 'const commentGap ='
   }
 ]
 

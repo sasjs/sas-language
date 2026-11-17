@@ -14,6 +14,27 @@ const anchor = `      quoting = preserveQuoting(quoting, currentStatement, model
       //#region --- Check for statement end
       if (node.type === "sep" && node.text === ";") {`
 
+/**
+ * The parser source the patches expect around `anchor`: every patch that
+ * targets the parser states the code it replaces, and a patch whose anchor is
+ * missing fails the build rather than being skipped - so a fixture that holds
+ * only one of them cannot stand in for the file.
+ */
+const fixtureSource = [
+  `export interface Statement {
+  type: "statement";
+  name: string;
+  children: Token[];
+  leadingComment?: Token;
+}`,
+  `      } else if (currentStatement.children.length === 1 && isComment(node)) {
+        // standalone comment, treat as a whole statement
+        prevStatement = currentStatement;`,
+  `      //#region --- Check for statement start
+      if (!currentStatement) {`,
+  anchor
+].join('\n\n')
+
 const fixture = async (t, source, inject = false) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'sasjs-patch-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -42,7 +63,7 @@ const fixture = async (t, source, inject = false) => {
 }
 
 test('upstream patches insert replacement text literally', async (t) => {
-  const { parser, patchUpstream } = await fixture(t, `before\n${anchor}\nafter`, true)
+  const { parser, patchUpstream } = await fixture(t, `before\n${fixtureSource}\nafter`, true)
   patchUpstream()
   const patched = await readFile(parser, 'utf8')
   assert.ok(patched.includes("// $& $' $$ $1"))
@@ -50,13 +71,13 @@ test('upstream patches insert replacement text literally', async (t) => {
 })
 
 test('upstream parser patch rejects duplicate contextual anchors', async (t) => {
-  const { parser, patchUpstream } = await fixture(t, `${anchor}\n${anchor}`)
+  const { parser, patchUpstream } = await fixture(t, `${fixtureSource}\n${anchor}`)
   assert.throws(() => patchUpstream(), /multiple|more than one|not unique/i)
-  assert.equal(await readFile(parser, 'utf8'), `${anchor}\n${anchor}`)
+  assert.equal(await readFile(parser, 'utf8'), `${fixtureSource}\n${anchor}`)
 })
 
 test('upstream parser patch applies once and remains idempotent', async (t) => {
-  const { parser, patchUpstream } = await fixture(t, anchor)
+  const { parser, patchUpstream } = await fixture(t, fixtureSource)
   patchUpstream()
   const once = await readFile(parser, 'utf8')
   assert.match(once, /const standaloneMacroCall = completeMacroCall/)
