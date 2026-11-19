@@ -106,6 +106,108 @@ run('keyword case is preserved, not normalised', async () => {
   assert.match(uppercase, /^DATA foo;\n {2}SET bar;\nRUN;\n$/)
 })
 
+run('macro function values do not swallow the closing do group', async () => {
+  const input = [
+    '%macro f();',
+    '%if &type=N %then %do;',
+    '&valn',
+    '%end;',
+    '%else %if &type=C %then %do;',
+    '&valc',
+    '%end;',
+    '%mend f;',
+    ''
+  ].join('\n')
+  const expected = [
+    '%macro f();',
+    '  %if &type=N %then %do;',
+    '    &valn',
+    '  %end;',
+    '  %else %if &type=C %then %do;',
+    '    &valc',
+    '  %end;',
+    '%mend f;',
+    ''
+  ].join('\n')
+  const output = await formatText(input)
+  assert.equal(output, expected)
+  assert.equal(await formatText(output), output)
+})
+
+run('macro function result is separated from its closing end', async () => {
+  const input = ['%macro f();', '%if 1 %then %do;', '%upcase(&x)', '%end;', '%mend f;', ''].join(
+    '\n'
+  )
+  const output = await formatText(input)
+  assert.equal(
+    output,
+    ['%macro f();', '  %if 1 %then %do;', '    %upcase(&x)', '  %end;', '%mend f;', ''].join('\n')
+  )
+})
+
+run('adjacent macro text and end do not gain a space', async () => {
+  const input = ['%macro f();', '%do;', 'abc%end;', '%mend f;', ''].join('\n')
+  const output = await formatText(input)
+  assert.equal(output, '%macro f();\n  %do;\n  abc%end;\n%mend f;\n')
+  assert.equal(await formatText(output), output)
+})
+
+run('macro end inside an unfinished call is not split from its argument', async () => {
+  const input = ['%macro f();', '%do;', '%other(a=foo %end; bar)', '%end;', '%mend f;', ''].join(
+    '\n'
+  )
+  const output = await formatText(input)
+  assert.equal(output, '%macro f();\n  %do;\n  %other(a=foo %end;\n  bar) %end;\n%mend f;\n')
+  assert.equal(await formatText(output), output)
+})
+
+run('nested macro do blocks align their closing keywords', async () => {
+  const input = ['%macro f();', '%do;', '%do;', '&value', '%end;', '%end;', '%mend f;', ''].join(
+    '\n'
+  )
+  const output = await formatText(input)
+  assert.equal(
+    output,
+    [
+      '%macro f();',
+      '  %do;',
+      '    %do;',
+      '      &value',
+      '    %end;',
+      '  %end;',
+      '%mend f;',
+      ''
+    ].join('\n')
+  )
+  assert.equal(await formatText(output), output)
+})
+
+run('quoted end is not a macro do boundary', async () => {
+  const input = [
+    '%macro f();',
+    '%do;',
+    '%let v=%nrstr(%end;);',
+    '&v',
+    '%end;',
+    '%mend f;',
+    ''
+  ].join('\n')
+  const output = await formatText(input)
+  assert.equal(
+    output,
+    [
+      '%macro f();',
+      '  %do;',
+      '    %let v=%nrstr(%end;);',
+      '    &v',
+      '  %end;',
+      '%mend f;',
+      ''
+    ].join('\n')
+  )
+  assert.equal(await formatText(output), output)
+})
+
 run('formatting is idempotent', async () => {
   const input = [
     'data work.foo;',

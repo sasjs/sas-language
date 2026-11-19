@@ -419,6 +419,44 @@ const MEND_ENDS_THE_STATEMENT = [
 ]
 
 /**
+ * A whitespace-separated %end also closes an unterminated value, but not text
+ * directly adjacent to it: adding whitespace there could change macro output.
+ * Leave quoting and format-ignore regions untouched, as well as an in-progress
+ * macro statement or parenthesised expression. Its anchor is upstream parser
+ * code following the %mend patch, not the wording of that patch's comment.
+ */
+const END_ENDS_THE_STATEMENT = [
+  `      //#region --- Check for statement start
+      if (!currentStatement) {`,
+  `      // End a semicolon-less value before a whitespace-separated %end.
+      if (
+        currentStatement &&
+        currentStatement.children.length &&
+        quoting < 0 && preserveCustom < 0 &&
+        /^%end$/i.test(node.text) &&
+        !isSamePosition(currentStatement.children[currentStatement.children.length - 1].end, node.start) &&
+        currentStatement.children.reduce((depth, token) => {
+          if (token.type !== "sep") return depth;
+          if (token.text === "(") return depth + 1;
+          if (token.text === ")") return depth - 1;
+          return depth;
+        }, 0) === 0 &&
+        (currentStatement.children[0].type !== "macro-keyword" ||
+          (currentStatement.children.length > 2 &&
+            currentStatement.children[1].type === "sep" &&
+            currentStatement.children[1].text === "(" &&
+            currentStatement.children[currentStatement.children.length - 1].text === ")")) &&
+        currentStatement.children[0].type !== "macro-sec-keyword"
+      ) {
+        prevStatement = currentStatement;
+        currentStatement = undefined;
+      }
+
+      //#region --- Check for statement start
+      if (!currentStatement) {`
+]
+
+/**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
  * `applied` is the marker that says the file already carries the patch. It has
@@ -443,6 +481,12 @@ const PATCHES = [
     name: 'a semicolon-less return value ends at %mend',
     replace: MEND_ENDS_THE_STATEMENT,
     applied: 'A %mend starts a statement of its own'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a whitespace-separated macro end closes a semicolon-less value',
+    replace: END_ENDS_THE_STATEMENT,
+    applied: 'End a semicolon-less value before a whitespace-separated %end.'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',

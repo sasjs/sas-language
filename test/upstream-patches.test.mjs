@@ -76,6 +76,31 @@ test('upstream parser patch rejects duplicate contextual anchors', async (t) => 
   assert.equal(await readFile(parser, 'utf8'), `${fixtureSource}\n${anchor}`)
 })
 
+test('macro end patch is independent of the mend patch comment', async (t) => {
+  const { parser, patchUpstream } = await fixture(t, fixtureSource)
+  patchUpstream()
+  const source = await readFile(parser, 'utf8')
+  const start = source.indexOf(
+    '      // End a semicolon-less value before a whitespace-separated %end.'
+  )
+  const end = source.indexOf('      //#region --- Check for statement start', start)
+  assert.ok(start >= 0 && end > start)
+  const oldMendOnly = source.slice(0, start) + source.slice(end)
+  await writeFile(
+    parser,
+    oldMendOnly.replace(
+      'A %mend starts a statement of its own, so a statement still open when',
+      'A %mend starts a statement of its own, with revised prose'
+    )
+  )
+  patchUpstream()
+  const result = await readFile(parser, 'utf8')
+  assert.match(result, /End a semicolon-less value before a whitespace-separated %end/)
+  const once = result
+  patchUpstream()
+  assert.equal(await readFile(parser, 'utf8'), once)
+})
+
 test('upstream parser patch applies once and remains idempotent', async (t) => {
   const { parser, patchUpstream } = await fixture(t, fixtureSource)
   patchUpstream()
