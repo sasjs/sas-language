@@ -133,6 +133,12 @@ const run = (name, fn, options = {}) =>
     await fn(await fresh())
   })
 
+run('aligns macro end after a value through the browser entry', async ({ formatText }) => {
+  const input = '%macro f();\n%do;\n&value\n%end;\n%mend f;\n'
+  const expected = '%macro f();\n  %do;\n    &value\n  %end;\n%mend f;\n'
+  assert.equal(await formatText(input), expected)
+})
+
 run('formats standalone macro calls through the browser entry', async ({ formatText }) => {
   const input = '%first(a=(1))\n\n%second(b=2)\n%let x=1;\n'
   assert.equal(await formatText(input), input)
