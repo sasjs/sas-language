@@ -2,6 +2,8 @@
 # always reproduces the committed bytes (the CI sync check depends on this).
 # The data is also huge, and formatting it would obscure the refresh diff.
 data/
+# Retain the function snippets in their existing format.
+snippets/functions.json
 provenance.json
 src/groups.generated.ts
 dist/
