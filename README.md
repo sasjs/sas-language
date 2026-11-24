@@ -72,6 +72,27 @@ const doc = docsFor(docs, 'abs')
 Every group is a separate path, so a bundler emits only the groups you import and
 the documentation as its own chunk.
 
+## Function snippets
+
+Import the VS Code snippet JSON directly in an editor or bundler:
+
+```ts
+import functions from '@sasjs/sas-language/snippets/functions.json'
+```
+
+Each named entry has a `prefix`, a `body` array of snippet strings (including
+placeholders), and a `description`. These 223 function templates are distinct
+from the completion index above and are not updated by the data refresh.
+Node ESM requires a JSON import attribute (`with { type: 'json' }`); CommonJS
+can use `require`.
+
+The snippets are adapted from the SAS Institute VS Code extension under Apache
+2.0. When copying them into an extension or other distribution, also ship their
+attribution and license, available through these stable package subpaths:
+`@sasjs/sas-language/snippets/README.md` and
+`@sasjs/sas-language/snippets/LICENSE.txt`. The README records the upstream
+revision and local corrections.
+
 ## Formatting
 
 `./format` exposes the formatter the server uses, without running the server - the reprint as a call, for hosts that cannot speak LSP to it, such as a CLI in CI.

@@ -28,6 +28,9 @@
       "default": "./dist/format.bundle.js"
     },
     "./data/*": "./data/*",
+    "./snippets/functions.json": "./snippets/functions.json",
+    "./snippets/LICENSE.txt": "./snippets/LICENSE.txt",
+    "./snippets/README.md": "./snippets/README.md",
     "./server/browser": "./server/browser/server.js",
     "./server/node": "./server/node/dist/node/server.js",
     "./provenance.json": "./provenance.json"
@@ -35,7 +38,9 @@
   "files": [
     "dist",
     "data",
+    "snippets",
     "server",
+    "NOTICE",
     "provenance.json",
     "README.md"
   ],

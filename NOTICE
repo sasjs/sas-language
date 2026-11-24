@@ -1,7 +1,7 @@
 @sasjs/sas-language
 Copyright (c) 2026 SASjs
 
-This package contains two things from the SAS extension for Visual Studio Code:
+This package contains the following material from the SAS extension for Visual Studio Code:
 
     https://github.com/sassoftware/vscode-sas-extension
     Copyright (c) SAS Institute Inc.
@@ -18,6 +18,11 @@ This package contains two things from the SAS extension for Visual Studio Code:
    ignored and it has no release assets. The build is reproducible in content but
    not byte for byte, as the upstream typeshed loader inlines the Python stubs in
    filesystem order rather than sorting them.
+
+3. The function snippets in snippets/functions.json are adapted from the
+   upstream snippets/function-snippets.json at commit
+   4adcfe1469e448eb28d0961be09d03cd120d4464. See snippets/README.md for
+   provenance and changes, and snippets/LICENSE.txt for the Apache license.
 
 The compiled server carries further components under their own licences, and
 requires their notices to travel with it:
