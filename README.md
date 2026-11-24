@@ -86,13 +86,6 @@ from the completion index above and are not updated by the data refresh.
 Node ESM requires a JSON import attribute (`with { type: 'json' }`); CommonJS
 can use `require`.
 
-The snippets are adapted from the SAS Institute VS Code extension under Apache
-2.0. When copying them into an extension or other distribution, also ship their
-attribution and license, available through these stable package subpaths:
-`@sasjs/sas-language/snippets/README.md` and
-`@sasjs/sas-language/snippets/LICENSE.txt`. The README records the upstream
-revision and local corrections.
-
 ## Formatting
 
 `./format` exposes the formatter the server uses, without running the server - the reprint as a call, for hosts that cannot speak LSP to it, such as a CLI in CI.
