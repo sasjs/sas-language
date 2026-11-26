@@ -457,6 +457,193 @@ const END_ENDS_THE_STATEMENT = [
 ]
 
 /**
+ * A masking function's argument that is itself a program is printed verbatim.
+ *
+ * `%nrstr(`, `%str(` and their kin take an argument the macro compiler does not
+ * resolve, and in the macro library that argument is sometimes a whole program
+ * - `%let rc=%sysfunc(dosubl(%nrstr( proc cas; ... run; )));`, how every `mfv_`
+ * function stages its work. The lexer does not know the text is masked, so the
+ * `proc` and `data` keywords inside it open regions, and opening a region
+ * abandons the statement the masking call belongs to. Every further token then
+ * pops against a statement with nothing left in it, and the print pass throws
+ * `Cannot read properties of undefined (reading 'start')` - the formatter
+ * refuses the file rather than printing it wrong, which is the safe failure but
+ * still a file no consumer can format.
+ *
+ * Guarding the pop is not the fix: the tokens are already gone, so the region's
+ * content would be printed as nothing at all and the program inside the mask -
+ * silently - deleted.
+ *
+ * So the argument is captured the way a cards section is: at the opening
+ * parenthesis of the masking call, before anything has been popped, one
+ * `raw-data` token is taken from column 0 of the statement's own line through
+ * the parenthesis that closes the masking call, and the tokens inside it are
+ * skipped. That is the path the printer already prints verbatim, and starting
+ * at column 0 keeps the author's indentation, as a cards section does.
+ *
+ * The closing parenthesis is found by scanning text rather than by counting
+ * tokens, because the tokens are what cannot be trusted here: strings are
+ * skipped (a `)` inside one is text), as are block comments, and the quote of
+ * `%str(%")` - which the macro library writes constantly - opens nothing
+ * because a masking marker's quote is not a string.
+ *
+ * Only an argument that spans statements is taken. One expression - the common
+ * `%str( )`, `%nrstr(&a)` - is already printed correctly by the statement's own
+ * layout, and capturing it would stop the printer formatting around it. The test
+ * is whether a token inside the argument would have opened a region or ended the
+ * statement's macro: a secondary keyword (`data`, `proc`), or `%mend`. A `%end`
+ * is not a test on its own - the parser already ignores one while a masking
+ * region is open - and capturing on it moved an ordinary one-line mask out of
+ * the indentation of the block it sits in.
+ *
+ * This patch anchors on the cards patch's own region marker, so it is listed
+ * after that one: it inserts itself between the quoting call and the region.
+ */
+const MASKING_REGION_VERBATIM = [
+  `      quoting = preserveQuoting(quoting, currentStatement, model);
+      if (quoting >= 0) {
+        continue;
+      }
+
+      //#region --- Preserve a cards section verbatim`,
+  `      quoting = preserveQuoting(quoting, currentStatement, model);
+
+      //#region --- Preserve a masking argument that spans statements
+      if (
+        quoting === 1 &&
+        node.type === "sep" &&
+        node.text === "(" &&
+        currentStatement.children.length > 0
+      ) {
+        let closeAt: { line: number; column: number } | undefined;
+        let spansToEnd = false;
+        let depth = 1;
+        let inComment = false;
+
+        layout: for (
+          let scanLine = node.end.line;
+          scanLine < model.getLineCount();
+          scanLine++
+        ) {
+          const content = model.getLine(scanLine).replace(/\\r?\\n$/, "");
+          for (
+            let column = scanLine === node.end.line ? node.end.column : 0;
+            column < content.length;
+            column++
+          ) {
+            const char = content[column];
+            if (inComment) {
+              if (char === "*" && content[column + 1] === "/") {
+                inComment = false;
+                column++;
+              }
+              continue;
+            }
+            if (char === "/" && content[column + 1] === "*") {
+              inComment = true;
+              column++;
+              continue;
+            }
+            if (
+              (char === '"' || char === "'") &&
+              content[column - 1] !== "%"
+            ) {
+              // A SAS string ends at its own quote, and a doubled quote is a
+              // quote inside it, so a parenthesis between them is text. The
+              // quote of a masking marker (\`%str(%")\`) opens nothing: it is
+              // closed by the parenthesis that follows it.
+              for (column++; column < content.length; column++) {
+                if (content[column] === char) {
+                  if (content[column + 1] === char) {
+                    column++;
+                    continue;
+                  }
+                  break;
+                }
+              }
+              continue;
+            }
+            if (char === "(") {
+              depth++;
+            } else if (char === ")") {
+              if (--depth === 0) {
+                closeAt = { line: scanLine, column: column + 1 };
+                break layout;
+              }
+            }
+          }
+        }
+
+        // No closing parenthesis: the mask is never closed, so the rest of the
+        // buffer is its argument. \`%nrstr(\` at the end of a truncated member is
+        // what that looks like, and leaving the region open deleted everything
+        // after the call - the tokens were popped and never re-emitted. The
+        // region runs to the end of the model instead, as an unterminated cards
+        // section does, and stops at the last line holding something because
+        // the printer adds the final newline itself.
+        if (!closeAt) {
+          let lastLine = model.getLineCount() - 1;
+          let lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          while (lastLine > node.end.line && lastContent === "") {
+            lastLine--;
+            lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          }
+          closeAt = { line: lastLine, column: lastContent.length };
+          spansToEnd = true;
+        }
+
+        const inside = (position: { line: number; column: number }) =>
+          !!closeAt &&
+          (position.line < closeAt.line ||
+            (position.line === closeAt.line &&
+              position.column < closeAt.column));
+
+        let spansStatements = spansToEnd;
+        let lastInside = i;
+        for (let j = i + 1; j < tokens.length && inside(tokens[j].start); j++) {
+          lastInside = j;
+          if (
+            tokens[j].type === "sec-keyword" ||
+            tokens[j].type === "macro-sec-keyword" ||
+            /^%mend$/i.test(tokens[j].text)
+          ) {
+            spansStatements = true;
+          }
+        }
+
+        const firstToken = currentStatement.children[0];
+        const start =
+          "start" in firstToken && firstToken.start
+            ? { line: firstToken.start.line, column: 0 }
+            : undefined;
+
+        if (spansStatements && closeAt && start) {
+          currentStatement.children = [
+            {
+              type: "raw-data",
+              text: model.getText({ start, end: closeAt }),
+              start,
+              end: closeAt,
+            },
+          ];
+          // The closing parenthesis belongs to the region; the separators that
+          // close the enclosing calls, and the semicolon that ends the
+          // statement, are parsed as they would be.
+          i = lastInside;
+          quoting = -1;
+          continue;
+        }
+      }
+      //#endregion ---
+
+      if (quoting >= 0) {
+        continue;
+      }
+
+      //#region --- Preserve a cards section verbatim`
+]
+
+/**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
  * `applied` is the marker that says the file already carries the patch. It has
@@ -511,6 +698,12 @@ const PATCHES = [
     name: 'a leading comment keeps the blank line before its statement',
     replace: LEADING_COMMENT_BLANK_LINE,
     applied: 'const commentGap ='
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a masking argument that spans statements is printed verbatim',
+    replace: MASKING_REGION_VERBATIM,
+    applied: '//#region --- Preserve a masking argument that spans statements'
   }
 ]
 

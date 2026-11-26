@@ -734,3 +734,68 @@ run('a cards section followed by a DATA step does not gain a blank line', async 
   const again = await formatText(output)
   assert.equal(again, output)
 })
+
+run('a masking argument that spans statements is printed as it was written', async () => {
+  // `%nrstr(` with a whole program as its argument: the lexer still tokenises
+  // that program as code, so a `proc` or `data` inside it opened a region and
+  // abandoned the statement the masking call belonged to. The print pass then
+  // popped tokens from a statement that had none left and threw, which left the
+  // buffer unchanged in the editor - the one file of 254 in @sasjs/core this
+  // formatter refused. Capturing the call through its matching `)` verbatim is
+  // what a cards section already does.
+  const masked = [
+    '    /* Read in the table list */',
+    '    proc cas;',
+    '      table.fileinfo result=source_list /caslib="&lib";',
+    '    quit;',
+    '    data &outprefix._&lib;',
+    "      set &outprefix._&lib(where=(upcase(Name) like '%.SASHDAT'));",
+    '    run;'
+  ]
+  const input = [
+    '%macro mfv_existsashdat(libds,outprefix=work.mfv_existsashdat);',
+    '%local rc;',
+    '%if %sysfunc(exist(&outprefix)) ne 1 %then %do;',
+    '  %let rc=%sysfunc(dosubl(%nrstr(',
+    ...masked,
+    '  )));',
+    '%end;',
+    '%mend mfv_existsashdat;',
+    ''
+  ].join('\n')
+
+  const output = await formatText(input)
+
+  for (const line of masked) {
+    assert.ok(
+      output.includes(line),
+      `the masked program must survive as written: ${JSON.stringify(line)} missing from ${JSON.stringify(output)}`
+    )
+  }
+  assert.equal(await formatText(output), output)
+})
+
+run('a masking argument with no closing parenthesis keeps the buffer', async () => {
+  // A mask that is never closed is a truncated member, or a call whose
+  // parenthesis lives elsewhere. Leaving the region open deleted everything
+  // after the call - the tokens were popped and never re-emitted - so the rest
+  // of the buffer is taken verbatim with the call, as an unterminated cards
+  // section is.
+  const input = ['%let x=%nrstr(', '  data y;', '    z=1;', '  run;', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('a masking argument on one line is still formatted around, not captured', async () => {
+  // The verbatim path is for an argument that spans statements. A masking call
+  // whose argument is one expression keeps the statement's own layout.
+  const input = ['data x;', '  y=%nrstr(a b);', 'run;', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
