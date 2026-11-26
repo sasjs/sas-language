@@ -739,10 +739,10 @@ run('a masking argument that spans statements is printed as it was written', asy
   // `%nrstr(` with a whole program as its argument: the lexer still tokenises
   // that program as code, so a `proc` or `data` inside it opened a region and
   // abandoned the statement the masking call belonged to. The print pass then
-  // popped tokens from a statement that had none left and threw, which left the
-  // buffer unchanged in the editor - the one file of 254 in @sasjs/core this
-  // formatter refused. Capturing the call through its matching `)` verbatim is
-  // what a cards section already does.
+  // popped tokens from a statement that had none left and threw, so the
+  // formatter refused the file and left the buffer unchanged. What must hold is
+  // that the masked program survives as written; capturing the call through its
+  // matching `)` verbatim is what a cards section already does.
   const masked = [
     '    /* Read in the table list */',
     '    proc cas;',
