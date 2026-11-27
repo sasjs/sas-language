@@ -720,6 +720,46 @@ const VERBATIM_BEFORE_BLOCK = [
 ]
 
 /**
+ * A comment attached after a semicolon is a separate statement if it wraps.
+ * Use the enclosing statement's indentation at that break, rather than the
+ * continuation indent used between tokens inside a statement. A region opener
+ * is the exception: on the next pass its comment belongs to the region's body.
+ * Keep the `line` separator so short trailing comments stay on the same line.
+ */
+const TRAILING_COMMENT_REGION = [
+  `      return printStatement(node);`,
+  `      return printStatement(node, path.isFirst && path.parent?.type === "region");`
+]
+
+const TRAILING_COMMENT_REGION_PARAMETER = [
+  `const printStatement = (node: Statement) => {`,
+  `const printStatement = (node: Statement, opensRegion: boolean) => {`
+]
+
+const TRAILING_COMMENT_INDENT = [
+  `                indent(
+                  isEqualsSign(token) ||
+                    (isEqualsSign(preToken) &&
+                      index + 1 < others.length &&
+                      !isEqualsSign(others[index + 1]))
+                    ? // trim whitespace around equals sign
+                      softline
+                    : line,
+                ),`,
+  `                isComment(token) && preToken.type === "sep" && preToken.text === ";" && !opensRegion
+                  ? line // a wrapped trailing comment starts at statement indentation
+                  : indent(
+                      isEqualsSign(token) ||
+                        (isEqualsSign(preToken) &&
+                          index + 1 < others.length &&
+                          !isEqualsSign(others[index + 1]))
+                        ? // trim whitespace around equals sign
+                          softline
+                        : line,
+                    ),`
+]
+
+/**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
  * `applied` is the marker that says the file already carries the patch. It has
@@ -732,6 +772,24 @@ const PATCHES = [
     name: 'comment printer keeps the layout of a comment body',
     replace: COMMENT_PRINTER,
     applied: 'const base = token.start ? token.start.column : 0;'
+  },
+  {
+    file: 'server/src/sas/formatter/printer.ts',
+    name: 'identify region-opening statements for trailing comments',
+    replace: TRAILING_COMMENT_REGION,
+    applied: 'return printStatement(node, path.isFirst && path.parent?.type === "region");'
+  },
+  {
+    file: 'server/src/sas/formatter/printer.ts',
+    name: 'pass region ownership to statement printer',
+    replace: TRAILING_COMMENT_REGION_PARAMETER,
+    applied: 'const printStatement = (node: Statement, opensRegion: boolean) => {'
+  },
+  {
+    file: 'server/src/sas/formatter/printer.ts',
+    name: 'wrapped trailing comments use statement indentation',
+    replace: TRAILING_COMMENT_INDENT,
+    applied: '// a wrapped trailing comment starts at statement indentation'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',
