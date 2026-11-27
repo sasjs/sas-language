@@ -17,12 +17,7 @@ export async function checkCardsCasing(formatText) {
           for (const terminated of [true, false]) {
             const opener = mode === 'upper' ? keyword : keyword.toUpperCase()
             const expectedOpener = mode === 'upper' ? keyword.toUpperCase() : keyword
-            const data = [
-              'run;',
-              'data test;',
-              '  MiXeD   VALUE',
-              ...(keyword === 'parmcards4' ? [] : ['  ;;;;'])
-            ].join(eol)
+            const data = ['run;', 'data test;', '  MiXeD   VALUE', '  ;;;;'].join(eol)
             const terminator = keyword.endsWith('4') ? ';;;;' : ';'
             const section = `${opener}${comment};${eol}${data}${terminated ? eol + terminator : ''}`
             const prefix = mode === 'upper' ? 'data x; input x $;' : 'DATA x; INPUT x $;'
