@@ -51,6 +51,17 @@ test('server scope rebuilds for an upstream patch-only change', async (t) => {
   assert.equal(await scopeFor(t, 'scripts/upstream-patches.mjs'), 'needed=true')
 })
 
+test('server scope rebuilds for formatter test helpers and test files', async (t) => {
+  for (const file of [
+    'test/cards-casing-cases.mjs',
+    'test/casing-narrow.test.mjs',
+    'test/casing-review-fixes.test.mjs',
+    'test/issue42-review.test.mjs'
+  ]) {
+    assert.equal(await scopeFor(t, file), 'needed=true', file)
+  }
+})
+
 test('server scope still rebuilds for an existing build input', async (t) => {
   assert.equal(await scopeFor(t, 'scripts/build-server.mjs'), 'needed=true')
 })
