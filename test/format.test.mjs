@@ -587,6 +587,88 @@ run('wrapped trailing block comments are indented consistently on the first pass
   assert.equal(await formatText(short, options), short)
 })
 
+run('wrapped comments at an implicit step boundary stay in the prior step', async () => {
+  const comment =
+    '/* an extremely long comment made longer than eighty characters by adding many extra words */'
+  for (const [input, expected] of [
+    [
+      `proc sql;\nselect a from b; ${comment}\ndata x; run;\n`,
+      `proc sql;\n  select a from b;\n  ${comment}\n\ndata x;\nrun;\n`
+    ],
+    [
+      `data x;\nx=1; ${comment}\ndata y; run;\n`,
+      `data x;\n  x=1;\n  ${comment}\n\ndata y;\nrun;\n`
+    ],
+    [
+      `proc sql;\nselect a from b; ${comment}\nquit;\n`,
+      `proc sql;\n  select a from b;\n  ${comment}\nquit;\n`
+    ]
+  ]) {
+    const once = await formatText(input)
+    assert.equal(once, expected)
+    assert.equal(await formatText(once), expected)
+  }
+})
+
+run('wrapped comment after a step terminator is stable before the next step', async () => {
+  const comment =
+    '/* an extremely long comment made longer than eighty characters by adding many extra words */'
+  const input = `data x;\n  x=1;\nrun; ${comment}\ndata y;\nrun;\n`
+  const expected = `data x;\n  x=1;\nrun;\n${comment}\n\ndata y;\nrun;\n`
+  const output = await formatText(input)
+  assert.equal(output, expected)
+  assert.equal(await formatText(output), expected)
+})
+
+run('wrapped comments after PROC run and quit remain between steps', async () => {
+  const comment =
+    '/* an extremely long comment made longer than eighty characters by adding many extra words */'
+  for (const [input, expected] of [
+    [
+      `proc print data=x; run; ${comment}\nproc means data=x; run;\n`,
+      `proc print data=x;\nrun;\n${comment}\n\nproc means data=x;\nrun;\n`
+    ],
+    [
+      `proc sql; select * from x; quit; ${comment}\ndata y; run;\n`,
+      `proc sql;\n  select * from x;\nquit;\n${comment}\n\ndata y;\nrun;\n`
+    ]
+  ]) {
+    const once = await formatText(input)
+    assert.equal(once, expected)
+    assert.equal(await formatText(once), expected)
+  }
+})
+
+run('nested wrapped step comments keep their enclosing macro indentation', async () => {
+  const comment =
+    '/* an extremely long comment made longer than eighty characters by adding many extra words */'
+  const input = `%macro m();\nproc sql; select * from x; quit; ${comment}\ndata y; run;\n%mend m;\n`
+  const expected = `%macro m();\n  proc sql;\n    select * from x;\n  quit;\n  ${comment}\n\n  data y;\n  run;\n%mend m;\n`
+  const once = await formatText(input)
+  assert.equal(once, expected)
+  assert.equal(await formatText(once), expected)
+})
+
+run('standalone step comments preserve surrounding blank line choices', async () => {
+  for (const [input, expected] of [
+    ['data x; run;\n/* note */\ndata y; run;\n', 'data x;\nrun;\n/* note */\n\ndata y;\nrun;\n'],
+    ['data x; run;\n\n/* note */\ndata y; run;\n', 'data x;\nrun;\n\n/* note */\ndata y;\nrun;\n'],
+    ['data x; run;\n/* note */\n\ndata y; run;\n', 'data x;\nrun;\n/* note */\n\ndata y;\nrun;\n'],
+    ['data x; run; /* short */\ndata y; run;\n', 'data x;\nrun; /* short */\n\ndata y;\nrun;\n']
+  ]) {
+    const once = await formatText(input)
+    assert.equal(once, expected)
+    assert.equal(await formatText(once), expected)
+  }
+})
+
+run('a comment after an ordinary statement ending in run remains a block header', async () => {
+  const input = '%put run;\n/* header */\ndata y;\nrun;\n'
+  const expected = '%put run;\n\n/* header */\ndata y;\nrun;\n'
+  assert.equal(await formatText(input), expected)
+  assert.equal(await formatText(expected), expected)
+})
+
 run('wrapped comments on region openers stay indented inside the region', async () => {
   const comment = '/* a comment long enough that the line has to break somewhere here */'
   const input = `data x;\n  if x then do; ${comment}\n    x=1;\n  end;\nrun;\n`

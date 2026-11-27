@@ -30,6 +30,8 @@ const fixtureSource = [
   `      } else if (currentStatement.children.length === 1 && isComment(node)) {
         // standalone comment, treat as a whole statement
         prevStatement = currentStatement;`,
+  `            if (prevStatement.children.length === 1 && isComment(prevToken)) {
+              // leading comment will be printed together with current statement`,
   `      //#region --- Check for statement start
       if (!currentStatement) {`,
   `          if (lineGap > minGapToPreserve) {`,
