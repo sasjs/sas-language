@@ -33,6 +33,12 @@ const fixtureSource = [
   `      //#region --- Check for statement start
       if (!currentStatement) {`,
   `          if (lineGap > minGapToPreserve) {`,
+  `  if (isComment(token)) {
+    return current;
+  }
+
+  if (
+    current === -1 &&`,
   `      currentStatement.children.push(node);
 
       preserveCustom = preserveCustomRegion(`,

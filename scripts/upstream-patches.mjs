@@ -677,6 +677,29 @@ const MASKING_REGION_VERBATIM = [
 ]
 
 /**
+ * A comment within a masking call is part of its eventual verbatim span. If
+ * left in children, it replaces the opening parenthesis as the last surviving
+ * token, making preserveQuoting drop everything before the comment at close.
+ * Only remove it after the opening parenthesis: comments before that remain
+ * ordinary tokens, and the model slice still contains the removed comment.
+ */
+const MASKING_COMMENT_TOKEN = [
+  `  if (isComment(token)) {
+    return current;
+  }
+
+  if (
+    current === -1 &&`,
+  `  if (isComment(token)) {
+    if (current > 0) statement.children.pop();
+    return current;
+  }
+
+  if (
+    current === -1 &&`
+]
+
+/**
  * The raw statement keeps the source gaps between any following tokens: macro
  * values and PUT output may depend on those spaces. Preserve the existing
  * statement-end handling rather than guessing where enclosing calls end.
@@ -832,6 +855,12 @@ const PATCHES = [
     name: 'a leading comment keeps the blank line before its statement',
     replace: LEADING_COMMENT_BLANK_LINE,
     applied: 'const commentGap ='
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'comments inside masking arguments stay in their preserved span',
+    replace: MASKING_COMMENT_TOKEN,
+    applied: 'if (current > 0) statement.children.pop();'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',
