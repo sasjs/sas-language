@@ -789,6 +789,98 @@ run('a masking argument with no closing parenthesis keeps the buffer', async () 
   assert.equal(await formatText(output), output)
 })
 
+run('a masked parenthesis inside the argument does not end the capture', async () => {
+  // %( and %) are the macro language's masked parentheses - text to the
+  // compiler, not parentheses. Counting one as a real one mislocates the
+  // parenthesis that closes the argument, and the code after the call was
+  // silently reformatted as part of it. Each of them is unbalanced on its own,
+  // so a count that treats them as real cannot land on the same place.
+  const inputs = [
+    ['  data q;', '    y=1;', '  run;', '  %put not %) a real close;'],
+    ['  data r;', '    z=1;', '  run;', '  %put %( left open;']
+  ]
+
+  for (const masked of inputs) {
+    const input = ['%let a=%nrstr(', ...masked, ');', '%let tail= 1;', ''].join('\n')
+
+    const output = await formatText(input)
+
+    for (const line of masked) {
+      assert.ok(
+        output.includes(line),
+        `the masked program must survive as written: ${JSON.stringify(line)} missing from ${JSON.stringify(output)}`
+      )
+    }
+    assert.ok(
+      output.trimEnd().endsWith('%let tail=1;'),
+      `the statement after the call must still be code: ${JSON.stringify(output)}`
+    )
+    assert.equal(await formatText(output), output)
+  }
+})
+
+run('a masking argument before a DATA or PROC step is stable', async () => {
+  const mask = ['%let a=%nrstr(', '  data q;', '    y=1;', '  run;', ');'].join('\n')
+  for (const tail of ['data tail; x=1; run;', 'proc print data=q; run;']) {
+    for (const gap of ['\n', '\n\n']) {
+      const output = await formatText(mask + gap + tail + '\n')
+      assert.ok(output.startsWith(mask + '\n\n' + tail.split(';')[0] + ';\n'))
+      assert.equal(await formatText(output), output)
+    }
+  }
+})
+
+run('a masking argument before an ordinary statement keeps the blank line', async () => {
+  const mask = ['%let a=%nrstr(', '  data q;', '  run;', ');'].join('\n')
+  const output = await formatText(mask + '\n\n%let tail= 1;\n')
+  assert.equal(output, mask + '\n\n%let tail=1;\n')
+  assert.equal(await formatText(output), output)
+})
+
+run('paired percent signs do not mask the following parenthesis', async () => {
+  const mask = ['%let a=%str(', '  data q;', '    y=1;', '  run;', '  20%%);'].join('\n')
+  const output = await formatText(mask + '\n%let tail= 1;\n')
+  assert.ok(output.startsWith(mask))
+  assert.ok(output.trimEnd().endsWith('%let tail=1;'))
+  assert.equal(await formatText(output), output)
+})
+
+run('a masking call after another statement does not duplicate it', async () => {
+  const input = '%put hi; %let x=%nrstr(data q; run;);\n'
+  const output = await formatText(input)
+  assert.equal(output, '%put hi;\n%let x=%nrstr(data q; run;);\n')
+  assert.equal(await formatText(output), output)
+})
+
+run('a multiline string inside a masking argument remains verbatim', async () => {
+  const input = [
+    '%let a=%nrstr(',
+    ' data q;',
+    ' x="a',
+    ')b(";',
+    ' proc print; run;',
+    ');',
+    '%let tail= 1;',
+    ''
+  ].join('\n')
+  const output = await formatText(input)
+  assert.ok(output.includes(' x="a\n)b(";\n proc print; run;'))
+  assert.ok(output.trimEnd().endsWith('%let tail=1;'))
+  assert.equal(await formatText(output), output)
+})
+
+run('text after a masking call keeps its whitespace', async () => {
+  for (const input of [
+    '%let x=%str(proc print; run;) suffix text;\n',
+    '%put %str(proc print; run;) #  #;\n',
+    '%let x=%sysfunc(dosubl(%nrstr(proc print; run;))) suffix text;\n'
+  ]) {
+    const output = await formatText(input)
+    assert.equal(output, input)
+    assert.equal(await formatText(output), output)
+  }
+})
+
 run('a masking argument on one line is still formatted around, not captured', async () => {
   // The verbatim path is for an argument that spans statements. A masking call
   // whose argument is one expression keeps the statement's own layout.

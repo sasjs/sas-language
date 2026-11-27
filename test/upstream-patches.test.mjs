@@ -32,6 +32,10 @@ const fixtureSource = [
         prevStatement = currentStatement;`,
   `      //#region --- Check for statement start
       if (!currentStatement) {`,
+  `          if (lineGap > minGapToPreserve) {`,
+  `      currentStatement.children.push(node);
+
+      preserveCustom = preserveCustomRegion(`,
   anchor
 ].join('\n\n')
 

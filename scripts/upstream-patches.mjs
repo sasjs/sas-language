@@ -476,10 +476,10 @@ const END_ENDS_THE_STATEMENT = [
  *
  * So the argument is captured the way a cards section is: at the opening
  * parenthesis of the masking call, before anything has been popped, one
- * `raw-data` token is taken from column 0 of the statement's own line through
- * the parenthesis that closes the masking call, and the tokens inside it are
- * skipped. That is the path the printer already prints verbatim, and starting
- * at column 0 keeps the author's indentation, as a cards section does.
+ * `raw-data` token is taken from the statement's own line through the closing
+ * parenthesis, and the tokens inside it are skipped. Capture indentation when
+ * the prefix is whitespace, but start at the statement when earlier code is
+ * on the same line, so that earlier code is not emitted a second time.
  *
  * The closing parenthesis is found by scanning text rather than by counting
  * tokens, because the tokens are what cannot be trusted here: strings are
@@ -519,6 +519,7 @@ const MASKING_REGION_VERBATIM = [
         let spansToEnd = false;
         let depth = 1;
         let inComment = false;
+        let stringQuote: string | undefined;
 
         layout: for (
           let scanLine = node.end.line;
@@ -532,6 +533,23 @@ const MASKING_REGION_VERBATIM = [
             column++
           ) {
             const char = content[column];
+            // An odd run of percent signs marks the following quote or
+            // parenthesis; pairs represent literal percent signs.
+            let percentCount = 0;
+            for (let previous = column - 1; content[previous] === "%"; previous--) {
+              percentCount++;
+            }
+            const masked = percentCount % 2 === 1;
+            if (stringQuote) {
+              if (char === stringQuote) {
+                if (content[column + 1] === stringQuote) {
+                  column++;
+                } else {
+                  stringQuote = undefined;
+                }
+              }
+              continue;
+            }
             if (inComment) {
               if (char === "*" && content[column + 1] === "/") {
                 inComment = false;
@@ -546,26 +564,16 @@ const MASKING_REGION_VERBATIM = [
             }
             if (
               (char === '"' || char === "'") &&
-              content[column - 1] !== "%"
+              !masked
             ) {
-              // A SAS string ends at its own quote, and a doubled quote is a
-              // quote inside it, so a parenthesis between them is text. The
-              // quote of a masking marker (\`%str(%")\`) opens nothing: it is
-              // closed by the parenthesis that follows it.
-              for (column++; column < content.length; column++) {
-                if (content[column] === char) {
-                  if (content[column + 1] === char) {
-                    column++;
-                    continue;
-                  }
-                  break;
-                }
-              }
+              // Keep quote state across lines; doubled quotes are string text.
+              stringQuote = char;
               continue;
             }
-            if (char === "(") {
+            // Marked parentheses are text, not argument boundaries.
+            if (char === "(" && !masked) {
               depth++;
-            } else if (char === ")") {
+            } else if (char === ")" && !masked) {
               if (--depth === 0) {
                 closeAt = { line: scanLine, column: column + 1 };
                 break layout;
@@ -614,7 +622,12 @@ const MASKING_REGION_VERBATIM = [
         const firstToken = currentStatement.children[0];
         const start =
           "start" in firstToken && firstToken.start
-            ? { line: firstToken.start.line, column: 0 }
+            ? {
+                line: firstToken.start.line,
+                column: model.getLine(firstToken.start.line)
+                  .slice(0, firstToken.start.column).trim() === ""
+                  ? 0 : firstToken.start.column,
+              }
             : undefined;
 
         if (spansStatements && closeAt && start) {
@@ -641,6 +654,49 @@ const MASKING_REGION_VERBATIM = [
       }
 
       //#region --- Preserve a cards section verbatim`
+]
+
+/**
+ * The raw statement keeps the source gaps between any following tokens: macro
+ * values and PUT output may depend on those spaces. Preserve the existing
+ * statement-end handling rather than guessing where enclosing calls end.
+ */
+const RAW_STATEMENT_GAPS = [
+  `      currentStatement.children.push(node);
+
+      preserveCustom = preserveCustomRegion(`,
+  `      // Preserve whitespace after a verbatim token as part of the statement.
+      if (currentStatement.children[0]?.type === "raw-data" &&
+          currentStatement.children.length && node.start) {
+        const previous = currentStatement.children[currentStatement.children.length - 1];
+        if (previous.end) {
+          const gap = model.getText({ start: previous.end, end: node.start });
+          if (gap) {
+            currentStatement.children.push({
+              type: "raw-data", text: gap, start: previous.end, end: node.start,
+            });
+          }
+        }
+      }
+      currentStatement.children.push(node);
+
+      preserveCustom = preserveCustomRegion(`
+]
+
+/** Do not preserve a gap twice when the following folding block prints one. */
+const VERBATIM_BEFORE_BLOCK = [
+  `          if (lineGap > minGapToPreserve) {`,
+  `          const nextBlock =
+            currentStatement.children[0].type === "raw-data" &&
+            (nextToken.type === "sec-keyword" || nextToken.type === "macro-sec-keyword")
+              ? syntaxProvider.getFoldingBlock(
+                  nextToken.start.line, nextToken.start.column, true, true, true,
+                )
+              : undefined;
+          const nextStartsBlock = nextBlock &&
+            nextBlock.startLine === nextToken.start.line &&
+            nextBlock.startCol === nextToken.start.column;
+          if (lineGap > minGapToPreserve && !nextStartsBlock) {`
 ]
 
 /**
@@ -704,6 +760,18 @@ const PATCHES = [
     name: 'a masking argument that spans statements is printed verbatim',
     replace: MASKING_REGION_VERBATIM,
     applied: '//#region --- Preserve a masking argument that spans statements'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a verbatim statement preserves gaps between subsequent tokens',
+    replace: RAW_STATEMENT_GAPS,
+    applied: '// Preserve whitespace after a verbatim token as part of the statement.'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a verbatim statement before a block does not duplicate its gap',
+    replace: VERBATIM_BEFORE_BLOCK,
+    applied: 'const nextStartsBlock = nextBlock &&'
   }
 ]
 
