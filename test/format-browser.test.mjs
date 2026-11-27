@@ -133,6 +133,24 @@ const run = (name, fn, options = {}) =>
     await fn(await fresh())
   })
 
+import { checkCardsCasing } from './cards-casing-cases.mjs'
+
+run('all cards variants preserve data during browser keyword casing', async ({ formatText }) => {
+  await checkCardsCasing(formatText)
+})
+
+run(
+  'keyword casing preserves cards and unsafe suffix through the browser entry',
+  async ({ formatText }) => {
+    const input = 'data x; input x $; datalines;\nrun;\ndata test;\n;\nrun;\n'
+    const upper = await formatText(input, { keywordCase: 'upper' })
+    assert.ok(upper.includes('\nrun;\ndata test;\n;\n'), upper)
+    const crossed = 'parmcards4;\ndata test;\n"x\n;;;;\n%let x="DATA; PROC PRINT;";'
+    const lower = await formatText(crossed, { keywordCase: 'lower' })
+    assert.ok(lower.includes('%let x="DATA; PROC PRINT;";'), lower)
+  }
+)
+
 run('aligns macro end after a value through the browser entry', async ({ formatText }) => {
   const input = '%macro f();\n%do;\n&value\n%end;\n%mend f;\n'
   const expected = '%macro f();\n  %do;\n    &value\n  %end;\n%mend f;\n'

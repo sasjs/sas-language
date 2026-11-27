@@ -58,6 +58,21 @@ declare module 'upstream-formatter' {
     }): void
   }
 
+  export interface ParserNode {
+    type: string
+    name?: string
+    text?: string
+    start?: { line: number; column: number }
+    end?: { line: number; column: number }
+    children?: ParserNode[]
+  }
+
+  export function getParser(
+    model: Model,
+    tokens: unknown[],
+    syntaxProvider: SyntaxProvider
+  ): () => ParserNode
+
   export class Formatter {
     constructor(model: Model, syntaxProvider: SyntaxProvider)
     format(options: FormatOptions): Promise<TextEdit[]>

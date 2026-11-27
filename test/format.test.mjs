@@ -737,6 +737,269 @@ run('a blank line between a comment and the statement below it survives', async 
   assert.equal(await formatText(output), output)
 })
 
+import { checkCardsCasing } from './cards-casing-cases.mjs'
+
+run('all cards variants preserve data during keyword casing', async () => {
+  await checkCardsCasing(formatText)
+})
+
+run('keyword casing changes the cards opener but not its data', async () => {
+  const input = 'data x; input x $; datalines /* keep data */;\nrun;\ndata test;\n;\nrun;\n'
+  const output = await formatText(input, { keywordCase: 'upper' })
+  assert.ok(output.includes('DATALINES /* keep data */;\nrun;\ndata test;\n;\n'), output)
+  assert.match(output, /INPUT x/)
+  assert.equal(await formatText(output, { keywordCase: 'upper' }), output)
+})
+
+run('keyword casing cannot change raw datalines records', async () => {
+  const input = 'data x; input x $; datalines;\nrun;\ndata test;\n;\nrun;\n'
+  const output = await formatText(input, { keywordCase: 'upper' })
+  assert.ok(output.includes('\nrun;\ndata test;\n;\n'), output)
+  assert.equal(await formatText(output, { keywordCase: 'upper' }), output)
+})
+
+run('keyword casing cannot change literals after crossed cards data', async () => {
+  const input = 'parmcards4;\ndata test;\n"x\n;;;;\n%let x="DATA; PROC PRINT;";'
+  const output = await formatText(input, { keywordCase: 'lower' })
+  assert.ok(output.includes('%let x="DATA; PROC PRINT;";'), output)
+  assert.equal(await formatText(output, { keywordCase: 'lower' }), output)
+})
+
+run('cards data tokens that cross the terminator cannot delete following code', async () => {
+  for (const keyword of ['datalines', 'datalines4', 'parmcards4']) {
+    for (const comment of ['', ' /* c */']) {
+      for (const record of ['"unclosed', '/* unclosed']) {
+        const terminator = keyword.endsWith('4') ? ';;;;' : ';'
+        const input = `data x; ${keyword}${comment};\n${record}\n${terminator}\n%put TAILMARKER;\n`
+        const output = await formatText(input)
+        assert.ok(output.includes(`\n${record}\n${terminator}\n`), output)
+        assert.ok(output.includes('%put TAILMARKER;'), output)
+        assert.equal(await formatText(output), output)
+      }
+    }
+  }
+})
+
+run('indented four-semicolon records stay inside DATA step cards4 sections', async () => {
+  for (const keyword of ['datalines4', 'cards4', 'lines4']) {
+    for (const eol of ['\n', '\r\n']) {
+      const section = [keyword + ';', '  ;;;;', '  abc   def', ';;;;'].join(eol)
+      const input = ['data x; input x $;', section, 'proc print; run;', ''].join(eol)
+      const output = await formatText(input)
+      assert.ok(output.includes(section), keyword + JSON.stringify(output))
+      assert.equal(await formatText(output), output)
+    }
+  }
+})
+
+run('DATA step cards4 ends when columns one through four are semicolons', async () => {
+  for (const keyword of ['datalines4', 'cards4', 'lines4']) {
+    for (const suffix of ['', 'x']) {
+      const input = `data x; input x $; ${keyword};\nrecord\n;;;;${suffix}\n%put done;\n`
+      const output = await formatText(input)
+      assert.ok(output.includes(`${keyword};\nrecord\n;;;;${suffix}`), keyword)
+      assert.ok(output.includes('%put done;'), keyword)
+      assert.equal(await formatText(output), output)
+    }
+  }
+})
+
+run('a comment between cards keyword and semicolon preserves all records', async () => {
+  for (const keyword of [
+    'datalines',
+    'cards',
+    'lines',
+    'parmcards',
+    'datalines4',
+    'cards4',
+    'lines4',
+    'parmcards4'
+  ]) {
+    for (const eol of ['\n', '\r\n']) {
+      const section = [
+        keyword + ' /* hi */;',
+        '  a   b',
+        keyword.endsWith('4') ? ';;;;' : ';'
+      ].join(eol)
+      const input = ['data x; input x $;', section, 'proc print; run;', ''].join(eol)
+      const output = await formatText(input)
+      assert.ok(output.includes(section), keyword + JSON.stringify(output))
+      assert.equal(await formatText(output), output)
+    }
+  }
+})
+
+run('same-line statements before datalines are not duplicated', async () => {
+  const input = 'data work.x; input x $; datalines;\n%str(a /* c */ b)\n;\nrun;\n'
+  const output = await formatText(input)
+  assert.equal(output, 'data work.x;\n  input x $;\ndatalines;\n%str(a /* c */ b)\n;\nrun;\n')
+  assert.equal(await formatText(output), output)
+})
+
+run(
+  'cards variants preserve records and preceding code across layouts and line endings',
+  async () => {
+    for (const keyword of ['datalines', 'cards', 'lines', 'parmcards']) {
+      for (const suffix of ['', '4']) {
+        for (const eol of ['\n', '\r\n']) {
+          for (const terminated of [true, false]) {
+            for (const sameLine of [true, false]) {
+              const name = keyword + suffix
+              const prefix =
+                keyword === 'parmcards' ? 'filename f temp;' : 'data work.x; input x $;'
+              const data = ['  one  x', '   ;data', 'two;three'].join(eol)
+              const terminator = suffix ? ';;;;' : ';'
+              const section = name + ';' + eol + data + (terminated ? eol + terminator : '')
+              const input =
+                '  ' +
+                prefix +
+                (sameLine ? '   ' : eol + '  ') +
+                section +
+                (terminated ? eol + 'run;' : '') +
+                eol
+              const output = await formatText(input)
+              const label = `${name} ${JSON.stringify(eol)} terminated=${terminated} sameLine=${sameLine}`
+              assert.ok(
+                output.includes(section),
+                `${label}: section changed: ${JSON.stringify(output)}`
+              )
+              assert.equal(
+                (
+                  output.match(keyword === 'parmcards' ? /filename f temp;/g : /data work\.x;/g) ||
+                  []
+                ).length,
+                1,
+                label
+              )
+              if (keyword !== 'parmcards')
+                assert.equal((output.match(/input x \$;/g) || []).length, 1, label)
+              if (!sameLine)
+                assert.ok(output.includes('  ' + section), `${label}: indentation lost`)
+              if (terminated) assert.equal((output.match(/run;/g) || []).length, 1, label)
+              assert.equal(await formatText(output), output, label)
+            }
+          }
+        }
+      }
+    }
+  }
+)
+
+run('unterminated cards preserve trailing blank records', async () => {
+  for (const keyword of ['datalines', 'cards', 'lines', 'parmcards']) {
+    for (const suffix of ['', '4']) {
+      for (const eol of ['\n', '\r\n']) {
+        for (const sameLine of [true, false]) {
+          const section = [keyword + suffix + ';', 'a', '', ''].join(eol)
+          const input = 'filename f temp;' + (sameLine ? ' ' : eol) + section + eol
+          const output = await formatText(input)
+          assert.ok(output.endsWith(section + '\n'), JSON.stringify(output))
+          assert.equal(await formatText(output), output)
+        }
+      }
+    }
+  }
+})
+
+run('a cards section keeps the suffix when a token crosses its terminator', async () => {
+  const input =
+    'filename f temp; parmcards4 /* opener */;\nunterminated "quote\n;;;;\n%put after;\n'
+  const output = await formatText(input)
+  assert.ok(
+    output.includes('parmcards4 /* opener */;\nunterminated "quote\n;;;;\n%put after;'),
+    JSON.stringify(output)
+  )
+  assert.equal((output.match(/filename f temp;/g) || []).length, 1)
+  assert.equal(await formatText(output), output)
+})
+
+run('cards token boundary fallback keeps raw data, suffix and EOF blank records', async () => {
+  for (const keyword of [
+    'datalines',
+    'cards',
+    'lines',
+    'parmcards',
+    'datalines4',
+    'cards4',
+    'lines4',
+    'parmcards4'
+  ]) {
+    for (const comment of ['', ' /* opener */']) {
+      for (const raw of ['unclosed "quote', "unclosed 'quote", 'unclosed /* comment']) {
+        for (const eols of [
+          ['\n', '\n', '\n', '\n'],
+          ['\r\n', '\n', '\r\n', '\n']
+        ]) {
+          const end = keyword.endsWith('4') ? ';;;;' : ';'
+          const section =
+            keyword +
+            comment +
+            ';' +
+            eols[0] +
+            raw +
+            eols[1] +
+            end +
+            eols[2] +
+            '%put    after;' +
+            eols[3] +
+            '\n\n'
+          const input = 'filename f temp; ' + section
+          const output = await formatText(input)
+          const label = `${keyword} ${comment} ${raw} ${JSON.stringify(eols)}`
+          assert.ok(output.includes(section.slice(0, -1)), `${label}: ${JSON.stringify(output)}`)
+          assert.equal((output.match(/filename f temp;/g) || []).length, 1, label)
+          assert.equal((output.match(/%put    after;/g) || []).length, 1, label)
+          assert.equal(await formatText(output), output, label)
+        }
+      }
+    }
+  }
+})
+
+run('cards with aligned tokens still format the suffix normally', async () => {
+  for (const keyword of [
+    'datalines',
+    'cards',
+    'lines',
+    'parmcards',
+    'datalines4',
+    'cards4',
+    'lines4',
+    'parmcards4'
+  ]) {
+    for (const comment of ['', ' /* opener */']) {
+      const input = `filename f temp; ${keyword}${comment};\nplain record\n${keyword.endsWith('4') ? ';;;;' : ';'}\n%put    after;\n`
+      const output = await formatText(input)
+      assert.ok(output.includes('%put after;'), JSON.stringify(output))
+      assert.equal(await formatText(output), output)
+    }
+  }
+})
+
+run('unterminated cards retain incomplete quoted and commented records to EOF', async () => {
+  for (const keyword of [
+    'datalines',
+    'cards',
+    'lines',
+    'parmcards',
+    'datalines4',
+    'cards4',
+    'lines4',
+    'parmcards4'
+  ]) {
+    for (const raw of ['unfinished "quote', 'unfinished /* comment']) {
+      for (const ending of ['', '\n', '\n\n\n', '\r\n\r\n\r\n']) {
+        const section = `${keyword} /* opener */;\n${raw}${ending}`
+        const output = await formatText('filename f temp; ' + section)
+        const expected = ending ? section.slice(0, -(ending.endsWith('\r\n') ? 2 : 1)) : section
+        assert.ok(output.includes(expected), JSON.stringify(output))
+        assert.equal((output.match(/filename f temp;/g) || []).length, 1)
+        assert.equal(await formatText(output), output)
+      }
+    }
+  }
+})
+
 run('a cards section is printed as it was written', async () => {
   // The body of a cards section is data. It used to be reflowed as statements
   // - the indentation dropped, and `;;;;` split into one semicolon on the last
