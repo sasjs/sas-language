@@ -260,8 +260,18 @@ const LEADING_COMMENT_BLANK_LINE = [
  * `;;;;` at the block's indent - and for a plain section a line whose first
  * character is a semicolon, where a leading blank makes the line data. A lone
  * `;` record inside a `parmcards4` block is an empty statement in the program
- * the section carries, never the end of the section. A section that is never
- * closed is left to the printer's usual handling.
+ * the section carries, never the end of the section.
+ *
+ * A section with no terminator at all is a truncated member, or one whose
+ * terminator lives in a file this buffer is not: the section means "everything
+ * that follows is data", so the verbatim region runs to the end of the model.
+ * Left unterminated in the AST, the section's own records came back but the
+ * line after them still counted as a statement boundary - inside a DATA step
+ * that added one blank line per run, so the file never settled, and in open
+ * code the records were reflowed as statements and joined onto one line, which
+ * is a data change. The region stops at the last line that holds something,
+ * because the trailing newline is the printer's to add and counting it as data
+ * printed two.
  *
  * The token starts at column 0 of the keyword's line, so the author's own
  * indentation travels with the text: a raw-data statement is printed with
@@ -323,6 +333,16 @@ const CARDS_SECTION_VERBATIM = [
             break;
           }
           line++;
+        }
+        if (start && !sectionEnd) {
+          // No terminator: the section is data to the end of the buffer.
+          let lastLine = model.getLineCount() - 1;
+          let lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          while (lastLine > node.end.line && lastContent === "") {
+            lastLine--;
+            lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          }
+          sectionEnd = { line: lastLine, column: lastContent.length };
         }
         if (start && sectionEnd) {
           while (

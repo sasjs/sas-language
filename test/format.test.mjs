@@ -735,6 +735,44 @@ run('a cards section followed by a DATA step does not gain a blank line', async 
   assert.equal(again, output)
 })
 
+run('an unterminated datalines section inside a DATA step is left as it was read', async () => {
+  // A section with no terminator is what a truncated member looks like. The
+  // section has to be read as data to the end of the buffer - the formatter
+  // instead ended it nowhere, kept the section, and added a blank line after it
+  // on every run, so the file never settled.
+  const input = ['data x;', '  input a;', 'datalines;', '1,2', '3,4', ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('an unterminated cards section at the top level keeps its records apart', async () => {
+  // The same section in open code was reflowed as statements, which joined the
+  // records onto one line - a data change, not a layout change.
+  const records = ['1,2', '3,4']
+  const input = ['datalines;', ...records, ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.deepEqual(output.split('\n').slice(1, 3), records)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('an unterminated parmcards4 section keeps the program it carries', async () => {
+  // The `4` variants end at a line of four or more semicolons; with none, the
+  // carried program is data to the end of the buffer and must not be reflowed.
+  const section = ['parmcards4;', '  data x;', '  run;']
+  const input = ['filename ft15f001 temp;', ...section, ''].join('\n')
+
+  const output = await formatText(input)
+
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
 run('a masking argument that spans statements is printed as it was written', async () => {
   // `%nrstr(` with a whole program as its argument: the lexer still tokenises
   // that program as code, so a `proc` or `data` inside it opened a region and
