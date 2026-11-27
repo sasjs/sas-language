@@ -22,6 +22,9 @@ This package contains several things from the SAS extension for Visual Studio Co
 3. The function snippets in snippets/functions.json are adapted from the
    upstream snippets/function-snippets.json.
 
+4. The procedure snippets in snippets/procedures.json are copied from the
+   upstream snippets/proc-snippets.json at the commit in provenance.json.
+
 The compiled server carries further components under their own licences, and
 requires their notices to travel with it:
 

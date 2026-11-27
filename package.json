@@ -29,6 +29,7 @@
     },
     "./data/*": "./data/*",
     "./snippets/functions.json": "./snippets/functions.json",
+    "./snippets/procedures.json": "./snippets/procedures.json",
     "./server/browser": "./server/browser/server.js",
     "./server/node": "./server/node/dist/node/server.js",
     "./provenance.json": "./provenance.json"

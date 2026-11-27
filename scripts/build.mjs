@@ -22,7 +22,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { GROUPS, UPSTREAM } from './groups.mjs'
+import { GROUPS, PROCEDURE_SNIPPETS, UPSTREAM } from './groups.mjs'
 import { SUPPLEMENTS } from './supplements.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -180,6 +180,33 @@ const main = async () => {
     )
   }
 
+  const snippetSource = await readFile(path.join(SOURCE, PROCEDURE_SNIPPETS))
+  const snippets = JSON.parse(snippetSource.toString('utf8'))
+  if (
+    !snippets ||
+    Array.isArray(snippets) ||
+    typeof snippets !== 'object' ||
+    !Object.keys(snippets).length
+  ) {
+    throw new Error(`${PROCEDURE_SNIPPETS} must be a non-empty snippet object`)
+  }
+  for (const [name, snippet] of Object.entries(snippets)) {
+    if (
+      !snippet ||
+      typeof snippet.prefix !== 'string' ||
+      !snippet.prefix ||
+      !Array.isArray(snippet.body) ||
+      !snippet.body.length ||
+      !snippet.body.every((line) => typeof line === 'string') ||
+      typeof snippet.description !== 'string' ||
+      !snippet.description
+    ) {
+      throw new Error(`${PROCEDURE_SNIPPETS}: invalid snippet ${name}`)
+    }
+  }
+  await mkdir(path.join(ROOT, 'snippets'), { recursive: true })
+  await writeFile(path.join(ROOT, 'snippets/procedures.json'), snippetSource)
+
   const catalogue = {
     source: manifest.source,
     ref: manifest.ref,
@@ -201,7 +228,14 @@ const main = async () => {
         license: manifest.license,
         upstreamRef: manifest.ref,
         generatedBy: 'scripts/build.mjs',
-        groups: built
+        groups: built,
+        snippets: {
+          procedures: {
+            file: PROCEDURE_SNIPPETS,
+            bytes: snippetSource.length,
+            sha256: sha256(snippetSource)
+          }
+        }
       },
       null,
       2
