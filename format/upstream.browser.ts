@@ -9,5 +9,6 @@
  * in with a loader backed by fetched data.
  */
 export { Formatter } from '../.upstream/server/server/src/sas/formatter/index'
+export { getParser } from '../.upstream/server/server/src/sas/formatter/parser'
 export { Model } from '../.upstream/server/server/src/sas/Model'
 export { SyntaxProvider } from '../.upstream/server/server/src/sas/SyntaxProvider'

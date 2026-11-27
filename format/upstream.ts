@@ -13,6 +13,7 @@
  * a data directory instead of at the bundle's own relative path.
  */
 export { Formatter } from '../.upstream/server/server/src/sas/formatter/index'
+export { getParser } from '../.upstream/server/server/src/sas/formatter/parser'
 export { Model } from '../.upstream/server/server/src/sas/Model'
 export { SyntaxProvider } from '../.upstream/server/server/src/sas/SyntaxProvider'
 export { ResLoader } from '../.upstream/server/server/src/node/ResLoader'

@@ -21,6 +21,7 @@ const anchor = `      quoting = preserveQuoting(quoting, currentStatement, model
  * only one of them cannot stand in for the file.
  */
 const fixtureSource = [
+  `  (model: Model, tokens: Token[], syntaxProvider: SyntaxProvider) => () => {`,
   `export interface Statement {
   type: "statement";
   name: string;
