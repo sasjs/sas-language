@@ -8,7 +8,7 @@
  */
 import { documentFrom } from './textDocument.js'
 
-import { getParser, Model, SyntaxProvider, type ParserNode } from 'upstream-formatter'
+import { Model, SyntaxProvider, getParser } from 'upstream-formatter'
 
 /** The token styles the lexer uses for words SAS does not let you spell freely. */
 const KEYWORD_STYLES = new Set([
@@ -28,20 +28,23 @@ const KEYWORD_STYLES = new Set([
  * back half cased - `data` lowercased next to `VAR` untouched. The lexer already
  * knows: every token carries a style, and the ones above are the words SAS reserves.
  *
- * So the printed text is lexed once more - no printing, just the token table - and
- * the spans it marks are rewritten. Editing from the end of each line backwards
- * keeps the earlier offsets valid, and a token holding no letters (a semicolon, a
- * `%` sigil) is skipped rather than cased into nonsense.
+ * The printed text is lexed and parsed again. The parse identifies verbatim
+ * spans that must not be cased and unsafe masking fallbacks that protect the
+ * remainder. Keyword tokens outside those spans are edited from the end of
+ * each line backwards to keep earlier offsets valid.
  */
 export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') => {
   const transform = (word: string) =>
     keywordCase === 'upper' ? word.toUpperCase() : word.toLowerCase()
 
-  const document = documentFrom(text)
-  const model = new Model(document)
+  const model = new Model(documentFrom(text))
   const syntaxProvider = new SyntaxProvider(model)
-  const parserTokens: unknown[] = []
-  syntaxProvider.setTokenCallback((token) => parserTokens.push(token))
+  // Re-parse the formatted text using the same lexed tokens that the printer
+  // would use. Parser fallback spans cannot be mapped from the original text:
+  // formatting can move their start. Case only the prefix when that parser
+  // detects an unterminated mask or a token crossing its scanned boundary.
+  const lexedTokens: unknown[] = []
+  syntaxProvider.setTokenCallback((token) => lexedTokens.push(token))
   const lastLine = model.getLineCount() - 1
   syntaxProvider.add({
     text: '',
@@ -53,34 +56,69 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
     }
   })
 
-  // The same parser used by the printer identifies verbatim regions, including
-  // cards data through EOF when a lexer token crosses a terminator. Reusing its
-  // spans avoids a second, conflicting interpretation of raw SAS data.
-  const protectedSpans: Array<{ start: number; end: number }> = []
+  type Position = { line: number; column: number }
+  let unsafe: Position | undefined
+  const raw: Array<{ start: Position; end: Position }> = []
+  const ast = getParser(
+    model,
+    lexedTokens,
+    syntaxProvider,
+    (start) => {
+      unsafe = start
+    },
+    true,
+    (start, end) => raw.push({ start, end })
+  )()
+  type RawNode = {
+    type: string
+    name?: string
+    text?: string
+    start?: Position
+    end?: Position
+    children?: RawNode[]
+  }
   const cardsOpeners: Array<{ line: number; start: number; end: number }> = []
-  const offset = (pos: { line: number; column: number }) =>
-    document.offsetAt({ line: pos.line, character: pos.column })
-  const visit = (node: ParserNode) => {
+  const visit = [ast as RawNode]
+  while (visit.length) {
+    const node = visit.pop()!
     if (
       node.type === 'statement' &&
       /^(datalines|cards|lines|parmcards)4?$/i.test(node.name ?? '')
     ) {
-      const raw = node.children?.[0]
-      if (raw?.type === 'raw-data' && raw.start && raw.text) {
-        const match = /^\s*(datalines|cards|lines|parmcards)4?\b/i.exec(raw.text)
+      const rawNode = node.children?.[0]
+      if (rawNode?.type === 'raw-data' && rawNode.start && rawNode.text) {
+        const match = /^\s*(datalines|cards|lines|parmcards)4?\b/i.exec(rawNode.text)
         if (match) {
           const word = match[0].trimStart()
-          const start = raw.start.column + match[0].length - word.length
-          cardsOpeners.push({ line: raw.start.line, start, end: start + word.length })
+          const start = rawNode.start.column + match[0].length - word.length
+          cardsOpeners.push({ line: rawNode.start.line, start, end: start + word.length })
         }
       }
     }
     if (node.type === 'raw-data' && node.start && node.end) {
-      protectedSpans.push({ start: offset(node.start), end: offset(node.end) })
+      raw.push({ start: node.start, end: node.end })
     }
-    node.children?.forEach(visit)
+    if (node.children) for (const child of node.children) visit.push(child)
   }
-  visit(getParser(model, parserTokens, syntaxProvider)())
+  const compare = (a: Position, b: Position) => a.line - b.line || a.column - b.column
+  raw.sort((a, b) => compare(a.start, b.start))
+  const spans: typeof raw = []
+  for (const span of raw) {
+    const last = spans[spans.length - 1]
+    if (last && compare(span.start, last.end) <= 0) {
+      if (compare(span.end, last.end) > 0) last.end = span.end
+    } else spans.push({ ...span })
+  }
+  const overlapsRaw = (start: Position, end: Position) => {
+    let lo = 0
+    let hi = spans.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (compare(spans[mid].start, end) < 0) lo = mid + 1
+      else hi = mid
+    }
+    return lo > 0 && compare(spans[lo - 1].end, start) > 0
+  }
 
   return text
     .split('\n')
@@ -91,15 +129,23 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
         const token = tokens[at]
         if (!KEYWORD_STYLES.has(token.style)) continue
         const end = at === tokens.length - 1 ? line.length : tokens[at + 1].start
-        const startOffset = document.offsetAt({ line: index, character: token.start })
-        const endOffset = document.offsetAt({ line: index, character: end })
-        if (protectedSpans.some((span) => startOffset < span.end && endOffset > span.start))
+        if (unsafe && (index > unsafe.line || (index === unsafe.line && end > unsafe.column))) {
           continue
+        }
+        if (overlapsRaw({ line: index, column: token.start }, { line: index, column: end })) {
+          continue
+        }
         const word = line.slice(token.start, end)
         if (!/[A-Za-z]/.test(word)) continue
         result = result.slice(0, token.start) + transform(word) + result.slice(end)
       }
       for (const opener of cardsOpeners.filter((item) => item.line === index)) {
+        if (
+          unsafe &&
+          (index > unsafe.line || (index === unsafe.line && opener.end > unsafe.column))
+        ) {
+          continue
+        }
         result =
           result.slice(0, opener.start) +
           transform(result.slice(opener.start, opener.end)) +

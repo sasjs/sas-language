@@ -915,6 +915,79 @@ const COMMENT_AFTER_STEP_MARK = [
         const afterComment = tokens[i + 1];`
 ]
 
+// Lexer tokens can cross the scanner's closing parenthesis (notably when the
+// lexer treats the final quote of '%') as percent-escaped). Never resume from
+// that token: it may contain arbitrary following statements. Preserve the
+// remainder and let the printer supply only its final newline.
+const MASKING_TOKEN_BOUNDARY = [
+  `        }
+
+        const firstToken = currentStatement.children[0];
+        const start =`,
+  `        }
+
+        const crossedBoundary = !spansToEnd && lastInside > i &&
+          !inside(tokens[lastInside].end) &&
+          !isSamePosition(tokens[lastInside].end, closeAt!);
+        if (crossedBoundary) {
+          spansStatements = true;
+          spansToEnd = true;
+        }
+        if (spansToEnd) {
+          let lastLine = model.getLineCount() - 1;
+          // Exclude exactly the terminal newline which the printer adds back.
+          if (lastLine > 0 && model.getLine(lastLine) === "") lastLine--;
+          const lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          closeAt = { line: lastLine, column: lastContent.length };
+          lastInside = tokens.length - 1;
+        }
+
+        const firstToken = currentStatement.children[0];
+        const start =`
+]
+
+// A swallowed token may end *exactly* at the scanned close. Only an actual
+// closing separator is a safe boundary; any other token forces the EOF fallback.
+const MASKING_END_TOKEN = [
+  `          !inside(tokens[lastInside].end) &&
+          !isSamePosition(tokens[lastInside].end, closeAt!);`,
+  `          !inside(tokens[lastInside].end) &&
+          (!isSamePosition(tokens[lastInside].end, closeAt!) ||
+            tokens[lastInside].type !== "sep" || tokens[lastInside].text !== ")");`
+]
+
+// Report the parser's own unsafe fallback in the re-lexed, formatted document.
+// This is internal to the formatter bundle, not part of formatText's API.
+const MASKING_FALLBACK_REPORTER = [
+  `  (model: Model, tokens: Token[], syntaxProvider: SyntaxProvider) => () => {`,
+  `  (model: Model, tokens: Token[], syntaxProvider: SyntaxProvider,
+    onMaskFallback?: (start: { line: number; column: number }) => void,
+    stopOnMaskFallback = false) => () => {`
+]
+
+const MASKING_FALLBACK_REPORT = [
+  `        if (spansStatements && closeAt && start) {
+          currentStatement.children = [`,
+  `        if (spansStatements && closeAt && start) {
+          if (spansToEnd) {
+            onMaskFallback?.(start);
+            if (stopOnMaskFallback) return root;
+          }
+          currentStatement.children = [`
+]
+
+// Report the scanner's masking argument even when the printer uses a normal
+// text token rather than raw-data. Casing must not rewrite those bytes either.
+const MASKING_SPAN_REPORTER = [
+  `    stopOnMaskFallback = false) => () => {`,
+  `    stopOnMaskFallback = false,
+    onMaskSpan?: (start: { line: number; column: number }, end: { line: number; column: number }) => void) => () => {`
+]
+const MASKING_SPAN_REPORT = [
+  `          lastInside = tokens.length - 1;\n        }\n\n        const firstToken = currentStatement.children[0];\n        const start =`,
+  `          lastInside = tokens.length - 1;\n        }\n\n        if (closeAt) onMaskSpan?.(node.end, closeAt);\n        const firstToken = currentStatement.children[0];\n        const start =`
+]
+
 /**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
@@ -1048,6 +1121,42 @@ const PATCHES = [
     name: 'a masking argument that spans statements is printed verbatim',
     replace: MASKING_REGION_VERBATIM,
     applied: '//#region --- Preserve a masking argument that spans statements'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'preserve the suffix when a masking token crosses its scanned boundary',
+    replace: MASKING_TOKEN_BOUNDARY,
+    applied: 'const crossedBoundary = !spansToEnd'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'recognize a non-separator token ending at the mask close',
+    replace: MASKING_END_TOKEN,
+    applied: 'tokens[lastInside].type !== "sep" || tokens[lastInside].text !== ")"'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'accept an internal masking fallback reporter',
+    replace: MASKING_FALLBACK_REPORTER,
+    applied: 'onMaskFallback?: (start:'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'report unsafe masking fallback to casing',
+    replace: MASKING_FALLBACK_REPORT,
+    applied: 'if (stopOnMaskFallback) return root;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'accept a masking argument span reporter',
+    replace: MASKING_SPAN_REPORTER,
+    applied: 'onMaskSpan?: (start:'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'report masking argument spans to casing',
+    replace: MASKING_SPAN_REPORT,
+    applied: 'if (closeAt) onMaskSpan?.(node.end, closeAt);'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',

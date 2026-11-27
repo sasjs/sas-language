@@ -58,20 +58,17 @@ declare module 'upstream-formatter' {
     }): void
   }
 
-  export interface ParserNode {
-    type: string
-    name?: string
-    text?: string
-    start?: { line: number; column: number }
-    end?: { line: number; column: number }
-    children?: ParserNode[]
-  }
-
   export function getParser(
     model: Model,
     tokens: unknown[],
-    syntaxProvider: SyntaxProvider
-  ): () => ParserNode
+    syntaxProvider: SyntaxProvider,
+    onMaskFallback?: (start: { line: number; column: number }) => void,
+    stopOnMaskFallback?: boolean,
+    onMaskSpan?: (
+      start: { line: number; column: number },
+      end: { line: number; column: number }
+    ) => void
+  ): () => unknown
 
   export class Formatter {
     constructor(model: Model, syntaxProvider: SyntaxProvider)
