@@ -783,6 +783,54 @@ const TRAILING_COMMENT_INDENT = [
 ]
 
 /**
+ * A standalone comment immediately after RUN/QUIT belongs between steps, not
+ * to the next block's opening statement. Otherwise the block's automatic blank
+ * line is printed before the comment on the next pass. Keep it outside the
+ * block, letting the block's own separator provide the gap after the comment.
+ * This also changes the placement of a blank line around an already standalone
+ * header in the same position; wrapped comments and such headers become
+ * indistinguishable after the first format. At an implicit step boundary, a
+ * comment still in the previous region must not be removed from its AST parent
+ * and attached to the next block, or its indentation will drift on the next pass.
+ */
+const COMMENT_AFTER_STEP = [
+  `            if (prevStatement.children.length === 1 && isComment(prevToken)) {
+              // leading comment will be printed together with current statement`,
+  `            const commentAfterStep = region.block && prevStatement.afterStep &&
+              prevToken === tokens[i - 1];
+            if (commentAfterStep) {
+              // The next block already supplies the gap after this comment.
+              prevStatement.blankLineAfter = false;
+            } else if (prevStatement.children.length === 1 && isComment(prevToken) && !(
+              prevToken === tokens[i - 1] &&
+              parent.children[parent.children.length - 2] !== prevStatement &&
+              tokens[i - 2]?.type === "sep" && tokens[i - 2].text === ";" &&
+              prevToken.start.line === tokens[i - 2].end.line + 1
+            )) {
+              // leading comment will be printed together with current statement`
+]
+
+const COMMENT_AFTER_STEP_FIELD = [
+  `  blankLineAfter?: boolean;`,
+  `  blankLineAfter?: boolean;
+  afterStep?: boolean;`
+]
+
+const COMMENT_AFTER_STEP_MARK = [
+  `        // standalone comment, treat as a whole statement
+        const afterComment = tokens[i + 1];`,
+  `        // standalone comment, treat as a whole statement
+        const previousToken = tokens[i - 1];
+        currentStatement.afterStep = !!previousToken &&
+          prevStatement?.children.length === 2 &&
+          /^(run|quit)$/i.test(prevStatement.children[0].text) &&
+          prevStatement.children[1] === previousToken &&
+          previousToken.type === "sep" && previousToken.text === ";" &&
+          node.start.line === previousToken.end.line + 1;
+        const afterComment = tokens[i + 1];`
+]
+
+/**
  * Every patch, with the file it applies to, relative to `.upstream/server`.
  *
  * `applied` is the marker that says the file already carries the patch. It has
@@ -822,6 +870,12 @@ const PATCHES = [
   },
   {
     file: 'server/src/sas/formatter/parser.ts',
+    name: 'comments immediately after step terminators stay between blocks',
+    replace: COMMENT_AFTER_STEP,
+    applied: 'const commentAfterStep = region.block &&'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
     name: 'a semicolon-less return value ends at %mend',
     replace: MEND_ENDS_THE_STATEMENT,
     applied: 'A %mend starts a statement of its own'
@@ -843,6 +897,18 @@ const PATCHES = [
     name: 'a standalone comment keeps the blank line after it',
     replace: STANDALONE_COMMENT_BLANK_LINE,
     applied: 'currentStatement.blankLineAfter = true;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'mark comments after step terminators',
+    replace: COMMENT_AFTER_STEP_FIELD,
+    applied: '  afterStep?: boolean;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'recognize standalone comments after step terminators',
+    replace: COMMENT_AFTER_STEP_MARK,
+    applied: 'currentStatement.afterStep = !!previousToken'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',
