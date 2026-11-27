@@ -133,6 +133,85 @@ const run = (name, fn, options = {}) =>
     await fn(await fresh())
   })
 
+run('browser keyword casing handles ordinary and unsafe masks', async ({ formatText }) => {
+  for (const keywordCase of ['upper', 'lower']) {
+    const before = keywordCase === 'upper' ? '%let' : '%LET'
+    const wanted = keywordCase === 'upper' ? '%LET' : '%let'
+    for (const fragment of ['%str(&a)', '%str(a,b)', '/* %str(a,b) */']) {
+      const output = await formatText(`${before} x=${fragment};\n${before} y=1;\n`, { keywordCase })
+      assert.ok(output.startsWith(wanted), output)
+      assert.ok(output.includes(`${wanted} y=1;`), output)
+    }
+    const records = keywordCase === 'upper' ? 'run;\ndata test;' : 'RUN;\nDATA TEST;'
+    const cards = await formatText(`data x;\ninput x $;\ndatalines;\n${records}\n;\nrun;\n`, {
+      keywordCase
+    })
+    assert.ok(cards.includes(`\n${records}\n;\n`), cards)
+    const literal =
+      keywordCase === 'upper' ? "'begin; proc print; end'" : "'BEGIN; PROC PRINT; END'"
+    const output = await formatText(
+      `${before} p=1;\n%let x=%str('%');\ndata a; x=${literal}; run;\n`,
+      { keywordCase }
+    )
+    assert.ok(output.startsWith(wanted), output)
+    assert.ok(output.includes(`x=${literal}`), output)
+    assert.equal(await formatText(output, { keywordCase }), output)
+  }
+})
+
+run(
+  'browser casing preserves masked keywords and handles a large flat file',
+  async ({ formatText }) => {
+    for (const keywordCase of ['upper', 'lower']) {
+      const argument = `a %str(%put inner;)\n %put next; %" %'`
+      const source = `%let x=%nrstr(${argument});\n%put tail;\n`
+      const output = await formatText(source, { keywordCase })
+      assert.ok(output.includes(argument), output)
+      assert.ok(output.includes(keywordCase === 'upper' ? '%PUT tail;' : '%put tail;'), output)
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+    const input = '%put hello;\n'.repeat(140000)
+    assert.equal(await formatText(input, { keywordCase: 'upper' }), '%PUT hello;\n'.repeat(140000))
+  },
+  { timeout: 120000 }
+)
+
+run('browser keyword case preserves literals after a problematic mask', async ({ formatText }) => {
+  const inputs = [
+    "%let x=%str('%');\ndata a; x='begin; proc print; end'; run;\n",
+    "%let x=%str('%');\ndata a; x='BEGIN; PROC PRINT; END'; run;\n"
+  ]
+  for (const keywordCase of ['preserve', 'upper', 'lower']) {
+    for (const input of inputs) {
+      const output = await formatText(input, { keywordCase })
+      assert.ok(output.includes(input.match(/x='[^']*'/)[0]), JSON.stringify(output))
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+    const truncated = '%let x=%nrstr(foo\n%put TAIL;\n\n\n'
+    assert.equal(await formatText(truncated, { keywordCase }), truncated)
+  }
+  assert.equal(
+    await formatText('%let x = %str(ordinary);\n%put tail;\n', { keywordCase: 'upper' }),
+    '%LET x=%STR(ordinary);\n%PUT tail;\n'
+  )
+})
+
+run('browser mask tokens ending exactly at EOF remain intact', async ({ formatText }) => {
+  for (const keywordCase of ['preserve', 'upper', 'lower']) {
+    for (const input of ["%put %str('%')", "%put %nrstr(a; %str('%'); b)"]) {
+      const output = await formatText(input, { keywordCase })
+      assert.equal(output, input + '\n')
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
+
+run('preserves a mask-boundary suffix through the browser entry', async ({ formatText }) => {
+  const input = "%let x=%str('%');\n%put TAIL;\n\n\n"
+  assert.equal(await formatText(input), input)
+  assert.equal(await formatText(await formatText(input)), input)
+})
+
 run('aligns macro end after a value through the browser entry', async ({ formatText }) => {
   const input = '%macro f();\n%do;\n&value\n%end;\n%mend f;\n'
   const expected = '%macro f();\n  %do;\n    &value\n  %end;\n%mend f;\n'

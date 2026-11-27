@@ -8,7 +8,7 @@
  */
 import { documentFrom } from './textDocument.js'
 
-import { Model, SyntaxProvider } from 'upstream-formatter'
+import { Model, SyntaxProvider, getParser } from 'upstream-formatter'
 
 /** The token styles the lexer uses for words SAS does not let you spell freely. */
 const KEYWORD_STYLES = new Set([
@@ -28,10 +28,10 @@ const KEYWORD_STYLES = new Set([
  * back half cased - `data` lowercased next to `VAR` untouched. The lexer already
  * knows: every token carries a style, and the ones above are the words SAS reserves.
  *
- * So the printed text is lexed once more - no printing, just the token table - and
- * the spans it marks are rewritten. Editing from the end of each line backwards
- * keeps the earlier offsets valid, and a token holding no letters (a semicolon, a
- * `%` sigil) is skipped rather than cased into nonsense.
+ * The printed text is lexed and parsed again. The parse identifies verbatim
+ * spans that must not be cased and unsafe masking fallbacks that protect the
+ * remainder. Keyword tokens outside those spans are edited from the end of
+ * each line backwards to keep earlier offsets valid.
  */
 export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') => {
   const transform = (word: string) =>
@@ -39,6 +39,12 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
 
   const model = new Model(documentFrom(text))
   const syntaxProvider = new SyntaxProvider(model)
+  // Re-parse the formatted text using the same lexed tokens that the printer
+  // would use. Parser fallback spans cannot be mapped from the original text:
+  // formatting can move their start. Case only the prefix when that parser
+  // detects an unterminated mask or a token crossing its scanned boundary.
+  const tokens: unknown[] = []
+  syntaxProvider.setTokenCallback((token) => tokens.push(token))
   const lastLine = model.getLineCount() - 1
   syntaxProvider.add({
     text: '',
@@ -50,6 +56,48 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
     }
   })
 
+  type Position = { line: number; column: number }
+  let unsafe: Position | undefined
+  const raw: Array<{ start: Position; end: Position }> = []
+  const ast = getParser(
+    model,
+    tokens,
+    syntaxProvider,
+    (start) => {
+      unsafe = start
+    },
+    true,
+    (start, end) => raw.push({ start, end })
+  )()
+  type RawNode = { type: string; start?: Position; end?: Position; children?: RawNode[] }
+  const visit = [ast as RawNode]
+  while (visit.length) {
+    const node = visit.pop()!
+    if (node.type === 'raw-data' && node.start && node.end) {
+      raw.push({ start: node.start, end: node.end })
+    }
+    if (node.children) for (const child of node.children) visit.push(child)
+  }
+  const compare = (a: Position, b: Position) => a.line - b.line || a.column - b.column
+  raw.sort((a, b) => compare(a.start, b.start))
+  const spans: typeof raw = []
+  for (const span of raw) {
+    const last = spans[spans.length - 1]
+    if (last && compare(span.start, last.end) <= 0) {
+      if (compare(span.end, last.end) > 0) last.end = span.end
+    } else spans.push({ ...span })
+  }
+  const overlapsRaw = (start: Position, end: Position) => {
+    let lo = 0
+    let hi = spans.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (compare(spans[mid].start, end) < 0) lo = mid + 1
+      else hi = mid
+    }
+    return lo > 0 && compare(spans[lo - 1].end, start) > 0
+  }
+
   return text
     .split('\n')
     .map((line, index) => {
@@ -59,6 +107,12 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
         const token = tokens[at]
         if (!KEYWORD_STYLES.has(token.style)) continue
         const end = at === tokens.length - 1 ? line.length : tokens[at + 1].start
+        if (unsafe && (index > unsafe.line || (index === unsafe.line && end > unsafe.column))) {
+          continue
+        }
+        if (overlapsRaw({ line: index, column: token.start }, { line: index, column: end })) {
+          continue
+        }
         const word = line.slice(token.start, end)
         if (!/[A-Za-z]/.test(word)) continue
         result = result.slice(0, token.start) + transform(word) + result.slice(end)

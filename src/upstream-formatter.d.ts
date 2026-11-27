@@ -58,6 +58,18 @@ declare module 'upstream-formatter' {
     }): void
   }
 
+  export function getParser(
+    model: Model,
+    tokens: unknown[],
+    syntaxProvider: SyntaxProvider,
+    onMaskFallback?: (start: { line: number; column: number }) => void,
+    stopOnMaskFallback?: boolean,
+    onMaskSpan?: (
+      start: { line: number; column: number },
+      end: { line: number; column: number }
+    ) => void
+  ): () => unknown
+
   export class Formatter {
     constructor(model: Model, syntaxProvider: SyntaxProvider)
     format(options: FormatOptions): Promise<TextEdit[]>

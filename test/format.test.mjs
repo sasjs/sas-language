@@ -45,6 +45,93 @@ const run = (name, fn) =>
     await fn()
   })
 
+run('a quoted percent in a mask cannot delete the following program', async () => {
+  const input = "%let x=%str('%');\n%put TAILMARKER;\n"
+  assert.equal(await formatText(input), input)
+})
+
+run('an incomplete mask retains trailing blank records', async () => {
+  const input = '%let x=%nrstr(foo\n%put TAIL;\n\n\n'
+  assert.equal(await formatText(input), input)
+})
+
+run('mask boundary fallback preserves prefixes, regions, comments and later tokens', async () => {
+  const cases = [
+    {
+      input: "data x; a=1; %let x=%str('%'); b=2; run;\n%put TAIL;\n",
+      expected: "data x;\n  a=1;\n%let x=%str('%'); b=2; run;\n%put TAIL;\n"
+    },
+    {
+      input: "%let x=%str('%');\n%put TAIL;\n%put 'later';\n%put END;\n"
+    },
+    {
+      input:
+        "%macro m;\n  %if 1 %then %do;\n    %let x=%str('%');\n    %put TAIL;\n  %end;\n%mend;\n"
+    },
+    { input: "%let x=\n   %str('%');\n%put TAIL;\n" },
+    { input: "/* before */\n%let x=%str('%'); /* after */ %put TAIL;\n" },
+    { input: '%let x=%nrstr("abc%");\n%put TAIL;\n' },
+    { input: "%let x=%str((a) /* ) */ '%');\n%put TAIL;\n" },
+    { input: "%let x=%str('%'); data a; run;\n" }
+  ]
+  for (const { input, expected = input } of cases) {
+    const output = await formatText(input)
+    assert.equal(output, expected, input)
+    assert.equal(await formatText(output), output, `second pass: ${input}`)
+  }
+})
+
+run('mask fallback retains LF and CRLF blank records and adds only the final newline', async () => {
+  for (const input of [
+    "%let x=%str('%');\n%put TAIL;\n\n\n",
+    "%let x=%str('%');\r\n%put TAIL;\r\n\r\n\r\n",
+    '%let x=%nrstr(foo\n%put TAIL;\n\n\n',
+    '%let x=%nrstr(foo\r\n%put TAIL;\r\n\r\n\r\n',
+    "%let x=%str('%');"
+  ]) {
+    // The formatter normally emits LF for the final line break, even for CRLF.
+    const expected = input.endsWith('\r\n')
+      ? input.slice(0, -2) + '\n'
+      : input.endsWith('\n')
+        ? input
+        : input + '\n'
+    const output = await formatText(input)
+    assert.equal(output, expected, JSON.stringify(input))
+    assert.equal(await formatText(output), output)
+  }
+})
+
+run('mask fallback remains safe with keywordCase options', async () => {
+  const input = "%let x=%str('%');\n%put tailmarker;\n"
+  for (const [keywordCase, expected] of [
+    ['preserve', input],
+    ['upper', input],
+    ['lower', input]
+  ]) {
+    const output = await formatText(input, { keywordCase })
+    assert.equal(output, expected, keywordCase)
+    assert.equal(await formatText(output, { keywordCase }), output)
+  }
+})
+
+run('macro comments in masks cannot swallow the following statement', async () => {
+  for (const input of [
+    '%let x=%str(%* ) ; hello);\n%put TAIL;\n',
+    '%let x=%str(a; %* ) ; data z;);\n%put TAIL;\n'
+  ]) {
+    const output = await formatText(input)
+    assert.equal(output.replace(/\s/g, ''), input.replace(/\s/g, ''))
+    assert.equal(await formatText(output), output)
+  }
+})
+
+run('ordinary masks continue to format outside the argument', async () => {
+  const input = '%let x = %str(ordinary);\n%put TAIL;\n'
+  const output = await formatText(input)
+  assert.equal(output, '%let x=%str(ordinary);\n%put TAIL;\n')
+  assert.equal(await formatText(output), output)
+})
+
 run('the default data root is the staged server tree', async () => {
   assert.equal(defaultDataRoot, DATA_ROOT)
 })
@@ -910,6 +997,41 @@ run('an unterminated parmcards4 section keeps the program it carries', async () 
 
   const output = await formatText(input)
 
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('keyword casing preserves the text inside masking arguments', async () => {
+  const input = '%let x=%nrstr(%put hello;);\n'
+  const output = await formatText(input, { keywordCase: 'upper' })
+  assert.equal(output, '%LET x=%NRSTR(%put hello;);\n')
+})
+
+run('keyword casing still applies around ordinary masks and mask text in comments', async () => {
+  for (const suffix of ['%let x=%str(&a);', '%put %str(a,b);', '/* %str(a,b) */']) {
+    const input = `data x;run;\n${suffix}\n`
+    const output = await formatText(input, { keywordCase: 'upper' })
+    assert.ok(output.startsWith('DATA x;\nRUN;\n'), output)
+  }
+})
+
+run('mask fallback does not uppercase literal data in the preserved suffix', async () => {
+  const input = "%let x=%str('%');\ndata a; x='begin; proc print; end'; run;\n"
+  const output = await formatText(input, { keywordCase: 'upper' })
+  assert.ok(output.includes("x='begin; proc print; end'"), output)
+})
+
+run('a masking argument at end of an incomplete statement is not lost', async () => {
+  for (const input of ["%put %str('%')", "%put %nrstr(a; %str('%'); b)"]) {
+    const output = await formatText(input)
+    assert.equal(output, input + '\n')
+    assert.equal(await formatText(output), output)
+  }
+})
+
+run('matched quotes containing a percent sign do not delete the rest of the program', async () => {
+  const input = "%let x=%str('%');\n%put TAILMARKER;\n"
+  const output = await formatText(input)
   assert.equal(output, input)
   assert.equal(await formatText(output), output)
 })
