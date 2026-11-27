@@ -572,6 +572,65 @@ run('a starred comment nested in a block is left as it was written', async () =>
   assert.equal(await formatText(output), output)
 })
 
+run('wrapped trailing block comments are indented consistently on the first pass', async () => {
+  const comment = '/* a comment long enough that the line has to break somewhere here */'
+  const options = { tabWidth: 2, useTabs: false, keywordCase: 'preserve' }
+  const input = `data x;\n  if 1 then stop; ${comment}\nrun;\n`
+  const expected = `data x;\n  if 1 then stop;\n  ${comment}\nrun;\n`
+
+  const output = await formatText(input, options)
+  assert.equal(output, expected)
+  assert.equal(await formatText(output, options), output)
+  assert.equal(await formatText(expected, options), expected)
+
+  const short = 'data x;\n  if 1 then stop; /* short */\nrun;\n'
+  assert.equal(await formatText(short, options), short)
+})
+
+run('wrapped comments on region openers stay indented inside the region', async () => {
+  const comment = '/* a comment long enough that the line has to break somewhere here */'
+  const input = `data x;\n  if x then do; ${comment}\n    x=1;\n  end;\nrun;\n`
+  const expected = `data x;\n  if x then do;\n    ${comment}\n    x=1;\n  end;\nrun;\n`
+  const output = await formatText(input)
+  assert.equal(output, expected)
+  assert.equal(await formatText(output), output)
+})
+
+run('wrapped comments retain the correct nesting and comment form', async () => {
+  const text =
+    'an extremely long comment made longer than eighty characters by adding many extra words'
+  const cases = [
+    [
+      `data x;\n if a then do;\n if b then do;\n x=1; /* ${text} */\n end; /* ${text} */\n end;\nrun;\n`,
+      `data x;\n  if a then do;\n    if b then do;\n      x=1;\n      /* ${text} */\n    end;\n    /* ${text} */\n  end;\nrun;\n`
+    ],
+    [
+      `%macro x();\n %if 1 %then %do; /* ${text} */\n %put text; %* ${text};\n %end;\n%mend x;\n`,
+      `%macro x();\n  %if 1 %then %do;\n    /* ${text} */\n    %put text;\n    %* ${text};\n  %end;\n%mend x;\n`
+    ],
+    [`data x;\n x=1; * ${text};\nrun;\n`, `data x;\n  x=1;\n  * ${text};\nrun;\n`]
+  ]
+  for (const [input, expected] of cases) {
+    const output = await formatText(input)
+    assert.equal(output, expected)
+    assert.equal(await formatText(output), output)
+  }
+})
+
+run('wrapped trailing comments honor indentation options', async () => {
+  const comment = '/* a comment long enough that the line has to break somewhere here */'
+  const input = `data x;\n if 1 then stop; ${comment}\nrun;\n`
+  for (const [options, indent] of [
+    [{ tabWidth: 4 }, '    '],
+    [{ useTabs: true }, '\t']
+  ]) {
+    const expected = `data x;\n${indent}if 1 then stop;\n${indent}${comment}\nrun;\n`
+    const output = await formatText(input, options)
+    assert.equal(output, expected)
+    assert.equal(await formatText(output, options), output)
+  }
+})
+
 run('a blank line under a doxygen header survives', async () => {
   // The header is a statement of its own, and the printer joined it to the
   // statement below with a single break, so the blank line an author leaves
