@@ -832,6 +832,32 @@ run('an unterminated parmcards4 section keeps the program it carries', async () 
   assert.equal(await formatText(output), output)
 })
 
+run('a comment within a masking argument does not delete preceding text', async () => {
+  const input = '%let x=%str(a; /* c */ b);\n'
+  const output = await formatText(input)
+  assert.equal(output, input)
+  assert.equal(await formatText(output), output)
+})
+
+run('masking arguments preserve comments and adjacent text', async () => {
+  const cases = [
+    '%let x=%str(a /* c */ b /* d */ c);\n',
+    '%let x=%nrstr(foo; /* one */ bar; /* two */ baz);\n',
+    '%let x=%str(a /* comment */ (b) c);\n',
+    '%let x=%str(a /* ) */ b);\n',
+    '%let x=%str(a; /* c */ b) suffix text;\n',
+    '%macro x();\n  %let x=%str(a; /* c */ b);\n%mend x;\n',
+    '%let x=%str(a; /* c\n d */ b);\n',
+    '%let x=%str /* c */ (a; b);\n',
+    '%let x=%str(a /* c */ b;\n'
+  ]
+  for (const input of cases) {
+    const output = await formatText(input)
+    assert.equal(output, input)
+    assert.equal(await formatText(output), output)
+  }
+})
+
 run('a masking argument that spans statements is printed as it was written', async () => {
   // `%nrstr(` with a whole program as its argument: the lexer still tokenises
   // that program as code, so a `proc` or `data` inside it opened a region and
