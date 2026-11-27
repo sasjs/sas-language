@@ -255,10 +255,13 @@ const LEADING_COMMENT_BLANK_LINE = [
  * token covering the section through its terminator, which the printer already
  * prints verbatim (that is the path a `cards-data` token takes), and the tokens
  * inside it are skipped. DATA step `4` variants end at four semicolons in
- * columns 1-4. PARMCARDS4 retains the historical indented-terminator heuristic
- * used by existing corpus fixtures; it is not a claim about SAS syntax. A plain
- * section ends at a line whose first character is a semicolon. A lone `;` record
- * inside a `parmcards4` block is not the end of the section.
+ * columns 1-4. PARMCARDS4 also requires column one: an indented terminator-like
+ * record is data, even in an incomplete section. Indented examples and legacy
+ * macro model text cannot be unambiguously distinguished from data. Such
+ * sections are conservatively preserved through the next column-one terminator
+ * or EOF, rather than corrupting data.
+ * A plain section ends at a line whose first character is a semicolon. A lone
+ * `;` record inside a `parmcards4` block is not the end of the section.
  *
  * A section with no terminator at all is a truncated member, or one whose
  * terminator lives in a file this buffer is not: the section means "everything
@@ -317,10 +320,9 @@ const CARDS_SECTION_VERBATIM = [
         let sectionEnd: { line: number; column: number } | undefined;
         while (line < model.getLineCount()) {
           const content = model.getLine(line).replace(/\\r?\\n$/, "");
-          // Plain DATA sections end at a semicolon in column 1. For *4,
-          // the DATA variants also use column 1; PARMCARDS4 retains the
-          // compatibility heuristic for indented corpus fixtures. A lone
-          // semicolon within PARMCARDS4 is data, not its end.
+          // Plain DATA sections end at a semicolon in column 1. The initial
+          // *4 heuristic is narrowed by later patches to require columns 1-4.
+          // A lone semicolon within PARMCARDS4 is data, not its end.
           const ends = four
             ? /^;{4,}$/.test(content.trim())
             : content.startsWith(";");
@@ -416,6 +418,16 @@ const CARDS_SECTION_DATA_COLUMNS = [
   `? (/^parmcards4$/i.test(currentStatement.name)
                 ? /^;{4,}$/.test(content.trim())
                 : content.startsWith(";;;;"))`
+]
+
+// Apply after the historical heuristic so previously patched trees also receive
+// the fix. An indented ;;;; is data, including when the buffer is incomplete.
+const CARDS_SECTION_PARMCARDS_COLUMNS = [
+  `? (/^parmcards4$/i.test(currentStatement.name)
+                ? /^;{4,}$/.test(content.trim())
+                : content.startsWith(";;;;"))`,
+  `? content.startsWith(";;;;") // PARMCARDS4 also ends in column one
+            // Prior patch marker: : content.startsWith(";;;;"))`
 ]
 
 const CARDS_SECTION_START = [
@@ -1151,6 +1163,12 @@ const PATCHES = [
     name: 'DATA step cards4 terminators begin in column one',
     replace: CARDS_SECTION_DATA_COLUMNS,
     applied: ': content.startsWith(";;;;"))'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'PARMCARDS4 terminators begin in column one',
+    replace: CARDS_SECTION_PARMCARDS_COLUMNS,
+    applied: '// PARMCARDS4 also ends in column one'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',

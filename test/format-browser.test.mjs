@@ -155,6 +155,22 @@ run('browser cases trusted prefixes in both directions after mismatch', async ({
 
 import { checkCardsCasing } from './cards-casing-cases.mjs'
 
+run(
+  'browser PARMCARDS4 preserves mixed EOL records through EOF or terminator',
+  async ({ formatText }) => {
+    for (const keywordCase of ['preserve', 'upper', 'lower']) {
+      for (const terminated of [false, true]) {
+        const records = 'alpha\r\n  ;;;;\n  x   y\r\n\t;;;;\nrun; data test;'
+        const input = `parmcards4;\n${records}${terminated ? '\r\n;;;;\n%put tail;\n' : '\r\n\r\n'}`
+        const output = await formatText(input, { keywordCase })
+        assert.ok(output.includes(records), JSON.stringify({ keywordCase, terminated, output }))
+        if (terminated) assert.match(output, /;;;;\n%(?:put|PUT) tail;/)
+        assert.equal(await formatText(output, { keywordCase }), output)
+      }
+    }
+  }
+)
+
 run('all cards variants preserve data during browser keyword casing', async ({ formatText }) => {
   await checkCardsCasing(formatText)
 })
