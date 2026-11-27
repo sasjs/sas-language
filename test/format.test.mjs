@@ -45,6 +45,32 @@ const run = (name, fn, options = {}) =>
     await fn()
   })
 
+run('indented PARMCARDS4 semicolons remain records until column-one terminator', async () => {
+  const input = 'filename f temp;\nparmcards4;\nalpha\n  ;;;;\n  x   y\n;;;;\n%put TAIL;\n'
+  const output = await formatText(input)
+  assert.ok(output.includes('\nalpha\n  ;;;;\n  x   y\n;;;;\n'), output)
+  assert.ok(output.includes('%put TAIL;'), output)
+  assert.equal(await formatText(output), output)
+})
+
+run(
+  'PARMCARDS4 preserves indented records with mixed line endings and incomplete input',
+  async () => {
+    for (const mode of ['preserve', 'upper', 'lower']) {
+      for (const terminated of [true, false]) {
+        const records = 'alpha\r\n  ;;;;\n  x   y\r\n\t;;;;\nrun; data test;'
+        const ending = terminated ? '\r\n;;;;\n%put tail;\n' : '\r\n\r\n'
+        const input = `parmcards4;\n${records}${ending}`
+        const output = await formatText(input, { keywordCase: mode })
+        assert.ok(output.includes(records), JSON.stringify({ mode, terminated, output }))
+        if (terminated) assert.match(output, /;;;;\n%(?:put|PUT) tail;/)
+        else assert.ok(output.endsWith('\r\n\n'), JSON.stringify(output))
+        assert.equal(await formatText(output, { keywordCase: mode }), output)
+      }
+    }
+  }
+)
+
 run('mask boundary fallback preserves prefixes, regions, comments and later tokens', async () => {
   const cases = [
     { input: "%let x=%str('%');\n%put TAILMARKER;\n" },
