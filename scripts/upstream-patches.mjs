@@ -968,6 +968,48 @@ const MASKING_END_TOKEN = [
             tokens[lastInside].type !== "sep" || tokens[lastInside].text !== ")");`
 ]
 
+// The scanner understands masked and literal parentheses, unlike the token
+// counter. Preserve the statement only if their closing boundaries disagree;
+// balanced marked delimiters need no special handling and retain normal layout.
+const MASKING_DELIMITER_MISMATCH = [
+  `        const crossedBoundary = !spansToEnd && lastInside > i &&`,
+  `        let tokenDepth = 1;
+        let tokenClose = -1;
+        for (let j = i + 1; j <= lastInside; j++) {
+          if (tokens[j].text === "(") tokenDepth++;
+          else if (tokens[j].text === ")" && --tokenDepth === 0) {
+            tokenClose = j;
+            break;
+          }
+        }
+        if (!spansToEnd && tokenClose !== lastInside) spansStatements = true;
+        const crossedBoundary = !spansToEnd && lastInside > i &&`
+]
+const MASKING_UNSAFE_SUFFIX = [
+  `        if (spansStatements && closeAt && start) {`,
+  `        // A following unterminated lexer token can include the final newline;
+        // printing that token and then the document newline grows on each pass.
+        // Treat this suffix as unsafe and capture it through EOF instead.
+        // Preserve trailing blank records after an affected statement too; the
+        // normal document printer drops them even when earlier text is raw.
+        const lastToken = tokens[tokens.length - 1];
+        const finalLine = model.getLineCount() - 1;
+        const finalColumn = model.getLine(finalLine).replace(/\\r?\\n$/, "").length;
+        const suffix = lastToken?.end
+          ? model.getText({ start: lastToken.end, end: { line: finalLine, column: finalColumn } })
+          : "";
+        if (!spansToEnd && tokenClose !== lastInside &&
+            (lastToken?.text.endsWith("\\n") || /\\n[ \\t\\r]*\\n/.test(suffix))) {
+          let lastLine = model.getLineCount() - 1;
+          if (lastLine > 0 && model.getLine(lastLine) === "") lastLine--;
+          const lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          closeAt = { line: lastLine, column: lastContent.length };
+          lastInside = tokens.length - 1;
+          spansToEnd = true;
+        }
+        if (spansStatements && closeAt && start) {`
+]
+
 // Report the parser's own unsafe fallback in the re-lexed, formatted document.
 // This is internal to the formatter bundle, not part of formatText's API.
 const MASKING_FALLBACK_REPORTER = [
@@ -986,6 +1028,30 @@ const MASKING_FALLBACK_REPORT = [
             if (stopOnMaskFallback) return root;
           }
           currentStatement.children = [`
+]
+
+// A delimiter mismatch poisons the lexer's later state even if its token ends
+// at the scanned close. Never parse the suffix from those stale tokens: cards
+// records can otherwise be reflowed as code. Case only the safe prefix; actual
+// crossing tokens retain the existing more conservative statement boundary.
+const MASKING_MISMATCH_SAFE_SUFFIX = [
+  `        if (!spansToEnd && tokenClose !== lastInside) spansStatements = true;
+        const crossedBoundary = !spansToEnd && lastInside > i &&
+          !inside(tokens[lastInside].end) &&
+          (!isSamePosition(tokens[lastInside].end, closeAt!) ||
+            tokens[lastInside].type !== "sep" || tokens[lastInside].text !== ")");
+        if (crossedBoundary) {`,
+  `        const delimiterMismatch = !spansToEnd && tokenClose !== lastInside;
+        if (delimiterMismatch) spansStatements = true;
+        const crossedBoundary = !spansToEnd && lastInside > i &&
+          !inside(tokens[lastInside].end) &&
+          (!isSamePosition(tokens[lastInside].end, closeAt!) ||
+            tokens[lastInside].type !== "sep" || tokens[lastInside].text !== ")");
+        if (crossedBoundary || delimiterMismatch) {`
+]
+const MASKING_MISMATCH_CASE_PREFIX = [
+  `            onMaskFallback?.(start);`,
+  `            onMaskFallback?.(delimiterMismatch && !crossedBoundary ? node.end : start);`
 ]
 
 // Report the scanner's masking argument even when the printer uses a normal
@@ -1154,6 +1220,18 @@ const PATCHES = [
   },
   {
     file: 'server/src/sas/formatter/parser.ts',
+    name: 'detect token and source delimiter disagreement',
+    replace: MASKING_DELIMITER_MISMATCH,
+    applied: 'let tokenDepth = 1;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'capture unsafe suffixes following mismatched delimiters',
+    replace: MASKING_UNSAFE_SUFFIX,
+    applied: 'const finalColumn = model.getLine(finalLine)'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
     name: 'accept an internal masking fallback reporter',
     replace: MASKING_FALLBACK_REPORTER,
     applied: 'onMaskFallback?: (start:'
@@ -1163,6 +1241,18 @@ const PATCHES = [
     name: 'report unsafe masking fallback to casing',
     replace: MASKING_FALLBACK_REPORT,
     applied: 'if (stopOnMaskFallback) return root;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'preserve EOF after a delimiter disagreement and case its safe prefix',
+    replace: MASKING_MISMATCH_SAFE_SUFFIX,
+    applied: 'const delimiterMismatch = !spansToEnd && tokenClose !== lastInside;'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'case trusted prefix before delimiter mismatch fallback',
+    replace: MASKING_MISMATCH_CASE_PREFIX,
+    applied: 'onMaskFallback?.(delimiterMismatch && !crossedBoundary ? node.end : start);'
   },
   {
     file: 'server/src/sas/formatter/parser.ts',
