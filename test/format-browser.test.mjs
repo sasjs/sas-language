@@ -133,6 +133,26 @@ const run = (name, fn, options = {}) =>
     await fn(await fresh())
   })
 
+import { checkUnsafeSuffix } from './issue48-adversarial-cases.mjs'
+
+run(
+  'browser preserves adversarial cards suffixes after mismatched masks',
+  async ({ formatText }) => {
+    assert.equal(await checkUnsafeSuffix(formatText), 1440)
+  }
+)
+
+run('browser cases trusted prefixes in both directions after mismatch', async ({ formatText }) => {
+  const cases = [
+    ['%let z=%bquote(%();\n%put TAIL;\n', 'upper', '%LET z=%BQUOTE(%();\n%put TAIL;\n'],
+    ['%LET z=%BQUOTE(%();\n%PUT TAIL;\n', 'lower', '%let z=%bquote(%();\n%PUT TAIL;\n']
+  ]
+  for (const [input, keywordCase, expected] of cases) {
+    assert.equal(await formatText(input, { keywordCase }), expected)
+    assert.equal(await formatText(expected, { keywordCase }), expected)
+  }
+})
+
 import { checkCardsCasing } from './cards-casing-cases.mjs'
 
 run('all cards variants preserve data during browser keyword casing', async ({ formatText }) => {
@@ -150,6 +170,48 @@ run(
     assert.ok(lower.includes('%let x="DATA; PROC PRINT;";'), lower)
   }
 )
+
+run(
+  'browser preserves marked delimiters and tails in every casing mode',
+  async ({ formatText }) => {
+    const inputs = [
+      ['%let z=%bquote(%();\n%put TAIL;\n', '%LET z=%BQUOTE(%();\n%put TAIL;\n'],
+      ['%let z=%nrbquote(%));\n%put TAIL;\n', '%LET z=%NRBQUOTE(%));\n%put TAIL;\n'],
+      [
+        '%let z=%bquote(abc %str(%() def);\n%put TAIL;\n',
+        '%LET z=%BQUOTE(abc %str(%() def);\n%PUT TAIL;\n'
+      ],
+      ["%let z=%bquote('x%(y');\n%put TAIL;\n", "%LET z=%BQUOTE('x%(y');\n%put TAIL;\n"],
+      ['%let z=%bquote(%(x\r\n%put TAIL;\r\n\r\n\r\n']
+    ]
+    for (const [input, upper = input] of inputs) {
+      for (const keywordCase of ['preserve', 'upper', 'lower']) {
+        let expected = keywordCase === 'upper' ? upper : input
+        if (expected.endsWith('\r\n')) expected = expected.slice(0, -2) + '\n'
+        const output = await formatText(input, { keywordCase })
+        assert.equal(output, expected, `${keywordCase}: ${JSON.stringify(input)}`)
+        assert.equal(await formatText(output, { keywordCase }), output)
+      }
+    }
+  }
+)
+
+run('browser retains blank lines after a closed marked mask', async ({ formatText }) => {
+  for (const eol of ['\n', '\r\n']) {
+    const input = ['%let z=%bquote(%();', '%put TAIL;', '', '', ''].join(eol)
+    const expected = eol === '\r\n' ? input.slice(0, -2) + '\n' : input
+    for (const keywordCase of ['preserve', 'upper', 'lower']) {
+      const output = await formatText(input, { keywordCase })
+      assert.equal(
+        output,
+        keywordCase === 'upper'
+          ? expected.replace('%let', '%LET').replace('%bquote', '%BQUOTE')
+          : expected
+      )
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
 
 run('browser keyword casing handles ordinary and unsafe masks', async ({ formatText }) => {
   for (const keywordCase of ['upper', 'lower']) {

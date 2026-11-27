@@ -45,6 +45,112 @@ const run = (name, fn, options = {}) =>
     await fn()
   })
 
+import { checkUnsafeSuffix } from './issue48-adversarial-cases.mjs'
+
+run('mismatched masks preserve adversarial cards suffixes', async () => {
+  assert.equal(await checkUnsafeSuffix(formatText), 1440)
+})
+
+run('mismatched delimiters preserve following data records through EOF', async () => {
+  const input = '%let z=%bquote(%();\ndata w;\ninput x $;\ndatalines;\nrun;   DATA\n;\nrun;\n'
+  assert.equal(await formatText(input), input)
+})
+
+run('mismatched delimiters case the trusted prefix in both directions', async () => {
+  const cases = [
+    ['%let z=%bquote(%();\n%put TAIL;\n', 'upper', '%LET z=%BQUOTE(%();\n%put TAIL;\n'],
+    ['%LET z=%BQUOTE(%();\n%PUT TAIL;\n', 'lower', '%let z=%bquote(%();\n%PUT TAIL;\n']
+  ]
+  for (const [input, keywordCase, expected] of cases) {
+    assert.equal(await formatText(input, { keywordCase }), expected)
+    assert.equal(await formatText(expected, { keywordCase }), expected)
+  }
+})
+
+run('bquote retains a marked opening parenthesis and the following statement', async () => {
+  const input = '%let z=%bquote(%();\n%put TAIL;\n'
+  assert.equal(await formatText(input), input)
+})
+
+run('bquote retains parentheses inside SAS string literals', async () => {
+  const input = "%let z=%bquote('x%(y');\n%put TAIL;\n"
+  assert.equal(await formatText(input), input)
+})
+
+run('marked delimiters retain complete source and remain stable under casing', async () => {
+  const inputs = [
+    ['%let z=%nrbquote(%));\n%put TAIL;\n', '%LET z=%NRBQUOTE(%));\n%put TAIL;\n'],
+    ['%let z=%bquote(%(%));\n%put TAIL;\n', '%LET z=%BQUOTE(%(%));\n%PUT TAIL;\n'],
+    [
+      '%let z=%bquote(abc %str(%() def);\n%put TAIL;\n',
+      '%LET z=%BQUOTE(abc %str(%() def);\n%PUT TAIL;\n'
+    ],
+    ["%let z=%bquote('x%(y');\n%put TAIL;\n", "%LET z=%BQUOTE('x%(y');\n%put TAIL;\n"],
+    ['%let z=%bquote(%(x\n%put TAIL;\n\n\n'],
+    ['%let z=%nrbquote(%(x\r\n%put TAIL;\r\n\r\n\r\n']
+  ]
+  for (const [input, upper = input] of inputs) {
+    for (const keywordCase of ['preserve', 'upper', 'lower']) {
+      let expected = keywordCase === 'upper' ? upper : input
+      if (expected.endsWith('\r\n')) expected = expected.slice(0, -2) + '\n'
+      const output = await formatText(input, { keywordCase })
+      assert.equal(output, expected, `${keywordCase}: ${JSON.stringify(input)}`)
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
+
+run('marked delimiters keep ordinary statement indentation', async () => {
+  const input =
+    '%macro m;\n  %do i=1 %to %sysfunc(countw(&x,%str( %(%))));\n    %put X;\n  %end;\n%mend;\n'
+  assert.equal(await formatText(input), input)
+})
+
+run('closed marked mask retains trailing blank lines after its suffix', async () => {
+  for (const eol of ['\n', '\r\n']) {
+    const input = ['%let z=%bquote(%();', '%put TAIL;', '', '', ''].join(eol)
+    const expected = eol === '\r\n' ? input.slice(0, -2) + '\n' : input
+    for (const keywordCase of ['preserve', 'upper', 'lower']) {
+      const output = await formatText(input, { keywordCase })
+      assert.equal(
+        output,
+        keywordCase === 'upper'
+          ? expected.replace('%let', '%LET').replace('%bquote', '%BQUOTE')
+          : expected
+      )
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
+
+run('unsafe suffix after a marked delimiter stays stable with blank records', async () => {
+  for (const eol of ['\n', '\r\n']) {
+    const input = [
+      '%macro m;',
+      '  %let z=%bquote(%(% )"x%)y");',
+      '  %put TAIL;',
+      '%mend;',
+      '',
+      '',
+      ''
+    ].join(eol)
+    const expected = eol === '\r\n' ? input.slice(0, -2).replace('\r\n', '\n') + '\n' : input
+    for (const keywordCase of ['preserve', 'upper', 'lower']) {
+      const output = await formatText(input, { keywordCase })
+      assert.equal(
+        output,
+        keywordCase === 'upper'
+          ? expected
+              .replace('%macro', '%MACRO')
+              .replace('%let', '%LET')
+              .replace('%bquote', '%BQUOTE')
+          : expected
+      )
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
+
 run('mask boundary fallback preserves prefixes, regions, comments and later tokens', async () => {
   const cases = [
     { input: "%let x=%str('%');\n%put TAILMARKER;\n" },
