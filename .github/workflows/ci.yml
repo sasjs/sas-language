@@ -51,9 +51,9 @@ jobs:
       # fresh build produce, so a hand edit or a stale .upstream/ cannot pass.
       - name: Data is in sync with its provenance
         run: |
-          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts)" ]; then
-            echo "data/, provenance.json or src/groups.generated.ts differ from a fresh build:"
-            git --no-pager diff --stat data provenance.json src/groups.generated.ts
+          if [ -n "$(git status --porcelain data provenance.json src/groups.generated.ts snippets/procedures.json)" ]; then
+            echo "Generated data, provenance, or procedure snippets differ from a fresh build:"
+            git --no-pager diff --stat data provenance.json src/groups.generated.ts snippets/procedures.json
             echo "Run 'npm run refresh && npm run build' and commit the result."
             exit 1
           fi

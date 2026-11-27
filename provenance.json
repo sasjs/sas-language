@@ -318,5 +318,12 @@
       "indexSha256": "60d1f9c22701bc6592f479bddd58b16d74a3414af647c356656ab7572c4a15a7",
       "docsSha256": "fedfd64fbc8c722ce3cff809878e95e0cbb615a623e84131fe8743c69dcf16d5"
     }
-  ]
+  ],
+  "snippets": {
+    "procedures": {
+      "file": "snippets/proc-snippets.json",
+      "bytes": 859,
+      "sha256": "4627235ead83531a38b6b1fa98d5de00f0fd4509931038f8425a458addc6ae2f"
+    }
+  }
 }

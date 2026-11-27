@@ -61,6 +61,16 @@ test('a per-group digest is not masked', () => {
   )
 })
 
+test('a procedure snippet digest change survives a pin move', () => {
+  const before = JSON.parse(provenance(OLD))
+  before.snippets = { procedures: { sha256: digest('a') } }
+  const after = { ...before, upstreamRef: NEXT, snippets: { procedures: { sha256: digest('b') } } }
+  assert.notEqual(
+    normaliseRefs('provenance.json', JSON.stringify(before)),
+    normaliseRefs('provenance.json', JSON.stringify(after))
+  )
+})
+
 test('a pin-shaped value in a group artefact is not a ref', () => {
   // Only the three pinned artefacts carry the upstream ref. A sha turning up in
   // a group's data is a value, not a pin, so it must not be masked.

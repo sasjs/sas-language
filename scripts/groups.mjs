@@ -21,6 +21,9 @@ export const UPSTREAM = {
   pubsDataDir: 'server/pubsdata'
 }
 
+// The procedure templates share the same upstream commit as the language data.
+export const PROCEDURE_SNIPPETS = 'snippets/proc-snippets.json'
+
 export const GROUPS = [
   {
     id: 'statements',
@@ -180,10 +183,11 @@ export const GROUPS = [
  * root, so the fetch and the build agree on where a file lives.
  */
 export const upstreamFiles = () => [
-  ...new Set(
-    GROUPS.flatMap((group) => [
+  ...new Set([
+    ...GROUPS.flatMap((group) => [
       ...group.files.map((file) => `${UPSTREAM.dataDir}/${file}`),
       ...(group.pubsdata ?? []).map(({ file }) => `${UPSTREAM.pubsDataDir}/${file}`)
-    ])
-  )
+    ]),
+    PROCEDURE_SNIPPETS
+  ])
 ]

@@ -60,7 +60,7 @@ jobs:
           git config user.name "sasjs"
           git config user.email "sasjs@4gl.io"
           git checkout -b "$branch"
-          git add data provenance.json src/groups.generated.ts
+          git add data provenance.json src/groups.generated.ts snippets/procedures.json
           git commit -m "chore: refresh SAS language data from upstream ${ref:0:10}"
           git push --set-upstream origin "$branch"
 
