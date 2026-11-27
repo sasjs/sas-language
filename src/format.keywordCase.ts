@@ -69,10 +69,32 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
     true,
     (start, end) => raw.push({ start, end })
   )()
-  type RawNode = { type: string; start?: Position; end?: Position; children?: RawNode[] }
+  type RawNode = {
+    type: string
+    name?: string
+    text?: string
+    start?: Position
+    end?: Position
+    children?: RawNode[]
+  }
+  const cardsOpeners: Array<{ line: number; start: number; end: number }> = []
   const visit = [ast as RawNode]
   while (visit.length) {
     const node = visit.pop()!
+    if (
+      node.type === 'statement' &&
+      /^(datalines|cards|lines|parmcards)4?$/i.test(node.name ?? '')
+    ) {
+      const rawNode = node.children?.[0]
+      if (rawNode?.type === 'raw-data' && rawNode.start && rawNode.text) {
+        const match = /^\s*(datalines|cards|lines|parmcards)4?\b/i.exec(rawNode.text)
+        if (match) {
+          const word = match[0].trimStart()
+          const start = rawNode.start.column + match[0].length - word.length
+          cardsOpeners.push({ line: rawNode.start.line, start, end: start + word.length })
+        }
+      }
+    }
     if (node.type === 'raw-data' && node.start && node.end) {
       raw.push({ start: node.start, end: node.end })
     }
@@ -116,6 +138,18 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
         const word = line.slice(token.start, end)
         if (!/[A-Za-z]/.test(word)) continue
         result = result.slice(0, token.start) + transform(word) + result.slice(end)
+      }
+      for (const opener of cardsOpeners.filter((item) => item.line === index)) {
+        if (
+          unsafe &&
+          (index > unsafe.line || (index === unsafe.line && opener.end > unsafe.column))
+        ) {
+          continue
+        }
+        result =
+          result.slice(0, opener.start) +
+          transform(result.slice(opener.start, opener.end)) +
+          result.slice(opener.end)
       }
       return result
     })

@@ -254,13 +254,11 @@ const LEADING_COMMENT_BLANK_LINE = [
  * So a statement that opens a cards section is rewritten as one `raw-data`
  * token covering the section through its terminator, which the printer already
  * prints verbatim (that is the path a `cards-data` token takes), and the tokens
- * inside it are skipped. The terminator is read the way SAS reads it: for the
- * `4` variants a line of four or more semicolons, which may be indented - every
- * macro in the corpus that stages a program inside a `%do` block writes its
- * `;;;;` at the block's indent - and for a plain section a line whose first
- * character is a semicolon, where a leading blank makes the line data. A lone
- * `;` record inside a `parmcards4` block is an empty statement in the program
- * the section carries, never the end of the section.
+ * inside it are skipped. DATA step `4` variants end at four semicolons in
+ * columns 1-4. PARMCARDS4 retains the historical indented-terminator heuristic
+ * used by existing corpus fixtures; it is not a claim about SAS syntax. A plain
+ * section ends at a line whose first character is a semicolon. A lone `;` record
+ * inside a `parmcards4` block is not the end of the section.
  *
  * A section with no terminator at all is a truncated member, or one whose
  * terminator lives in a file this buffer is not: the section means "everything
@@ -269,12 +267,14 @@ const LEADING_COMMENT_BLANK_LINE = [
  * line after them still counted as a statement boundary - inside a DATA step
  * that added one blank line per run, so the file never settled, and in open
  * code the records were reflowed as statements and joined onto one line, which
- * is a data change. The region stops at the last line that holds something,
- * because the trailing newline is the printer's to add and counting it as data
- * printed two.
+ * is a data change. Trailing blank records also remain in the region; only the
+ * final newline is left to the printer.
  *
- * The token starts at column 0 of the keyword's line, so the author's own
- * indentation travels with the text: a raw-data statement is printed with
+ * The token starts at column 0 of the keyword's line when it is preceded only
+ * by indentation, so the author's own indentation travels with the text. If
+ * earlier statements share that line, they are already in the AST and must not
+ * be included again: start at the keyword instead.
+ * A raw-data statement is printed with
  * `markAsRoot`, which stops the doc printer re-indenting it, so a section that
  * only kept its body would come back flush left inside the DATA step it belongs
  * to.
@@ -317,14 +317,10 @@ const CARDS_SECTION_VERBATIM = [
         let sectionEnd: { line: number; column: number } | undefined;
         while (line < model.getLineCount()) {
           const content = model.getLine(line).replace(/\\r?\\n$/, "");
-          // SAS ends a *4 section at a line of four or more semicolons, and a
-          // plain section at a line whose FIRST character is a semicolon - a
-          // leading blank there makes the line data, so the untrimmed line is
-          // what that test reads. The *4 test is content-based because the
-          // terminator arrives indented in the corpus (every macro that stages a
-          // program inside a %do block writes its ;;;; at the block's indent),
-          // and a lone semicolon inside a parmcards4 block is an empty statement
-          // in the program the section carries, not its end.
+          // Plain DATA sections end at a semicolon in column 1. For *4,
+          // the DATA variants also use column 1; PARMCARDS4 retains the
+          // compatibility heuristic for indented corpus fixtures. A lone
+          // semicolon within PARMCARDS4 is data, not its end.
           const ends = four
             ? /^;{4,}$/.test(content.trim())
             : content.startsWith(";");
@@ -403,6 +399,95 @@ const CARDS_SECTION_VERBATIM = [
       //#endregion ---
 
       //#region --- Check for statement end`
+]
+
+// The cards opener can contain block comments but no other SAS tokens.
+const CARDS_SECTION_COMMENT = [
+  `        currentStatement.children.length === 2 &&
+        /^(datalines|cards|lines|parmcards)4?$/i.test(currentStatement.name)`,
+  `        currentStatement.children.slice(1, -1).every(isComment) &&
+        /^(datalines|cards|lines|parmcards)4?$/i.test(currentStatement.name)`
+]
+
+// Preserve the historical PARMCARDS4 behavior for indented fixtures until its
+// compatibility tradeoff is handled separately; DATA step *4 is column based.
+const CARDS_SECTION_DATA_COLUMNS = [
+  `? /^;{4,}$/.test(content.trim())`,
+  `? (/^parmcards4$/i.test(currentStatement.name)
+                ? /^;{4,}$/.test(content.trim())
+                : content.startsWith(";;;;"))`
+]
+
+const CARDS_SECTION_START = [
+  `        const start =
+          "start" in firstToken && firstToken.start
+            ? { line: firstToken.start.line, column: 0 }
+            : node.start;`,
+  `        const start =
+          "start" in firstToken && firstToken.start
+            ? {
+                line: firstToken.start.line,
+                column: /^\\s*$/.test(
+                  model.getLine(firstToken.start.line).slice(0, firstToken.start.column)
+                )
+                  ? 0
+                  : firstToken.start.column,
+              }
+            : node.start;`
+]
+
+const CARDS_SECTION_TRAILING_BLANKS = [
+  `          let lastLine = model.getLineCount() - 1;
+          let lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          while (lastLine > node.end.line && lastContent === "") {
+            lastLine--;
+            lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          }
+          sectionEnd = { line: lastLine, column: lastContent.length };`,
+  `          let lastLine = model.getLineCount() - 1;
+          let lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          // The printer supplies one final newline; every earlier blank line is
+          // a data record and must remain inside the verbatim token.
+          if (lastLine > node.end.line && lastContent === "") {
+            lastLine--;
+            lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+          }
+          sectionEnd = { line: lastLine, column: lastContent.length };`
+]
+
+// A lexer token can begin in a data record and extend past the terminator.
+// Discarding that token would also discard the SAS code it swallowed. When
+// token and section boundaries disagree, keep the remainder verbatim instead
+// of attempting to parse a suffix from an invalid lexer state.
+const CARDS_SECTION_CROSSING_TOKEN = [
+  `        if (start && sectionEnd) {
+          while (
+            i + 1 < tokens.length &&
+            tokens[i + 1].start.line <= sectionEnd.line`,
+  `        if (start && sectionEnd) {
+          const boundary = sectionEnd;
+          let crossing = false;
+          for (let j = i + 1; j < tokens.length && tokens[j].start.line <= boundary.line; j++) {
+            const token = tokens[j];
+            if (token.end.line > boundary.line ||
+                (token.end.line === boundary.line && token.end.column > boundary.column)) {
+              crossing = true;
+              break;
+            }
+          }
+          if (crossing) {
+            let lastLine = model.getLineCount() - 1;
+            let lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+            // Keep all blank records except the newline supplied by the printer.
+            if (lastLine > node.end.line && lastContent === "") {
+              lastLine--;
+              lastContent = model.getLine(lastLine).replace(/\\r?\\n$/, "");
+            }
+            sectionEnd = { line: lastLine, column: lastContent.length };
+          }
+          while (
+            i + 1 < tokens.length &&
+            tokens[i + 1].start.line <= sectionEnd.line`
 ]
 
 /**
@@ -988,6 +1073,36 @@ const PATCHES = [
     name: 'a cards section is printed verbatim, terminator included',
     replace: CARDS_SECTION_VERBATIM,
     applied: '//#region --- Preserve a cards section verbatim'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'cards openers allow comments before the semicolon',
+    replace: CARDS_SECTION_COMMENT,
+    applied: 'currentStatement.children.slice(1, -1).every(isComment)'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'DATA step cards4 terminators begin in column one',
+    replace: CARDS_SECTION_DATA_COLUMNS,
+    applied: ': content.startsWith(";;;;"))'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'a cards section excludes preceding statements on the same line',
+    replace: CARDS_SECTION_START,
+    applied: 'model.getLine(firstToken.start.line).slice(0, firstToken.start.column)'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'unterminated cards retain trailing blank records',
+    replace: CARDS_SECTION_TRAILING_BLANKS,
+    applied: 'a data record and must remain inside the verbatim token.'
+  },
+  {
+    file: 'server/src/sas/formatter/parser.ts',
+    name: 'cards preserve the suffix when a token crosses the terminator',
+    replace: CARDS_SECTION_CROSSING_TOKEN,
+    applied: 'let crossing = false;'
   },
   {
     file: 'server/src/sas/formatter/printer.ts',
