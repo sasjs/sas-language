@@ -39,24 +39,15 @@ const skip = async () => {
 const reason = await skip()
 const { formatText, defaultDataRoot } = reason ? {} : await import('file://' + BUNDLE)
 
-const run = (name, fn) =>
-  test(name, async (context) => {
+const run = (name, fn, options = {}) =>
+  test(name, options, async (context) => {
     if (reason) return context.skip(reason)
     await fn()
   })
 
-run('a quoted percent in a mask cannot delete the following program', async () => {
-  const input = "%let x=%str('%');\n%put TAILMARKER;\n"
-  assert.equal(await formatText(input), input)
-})
-
-run('an incomplete mask retains trailing blank records', async () => {
-  const input = '%let x=%nrstr(foo\n%put TAIL;\n\n\n'
-  assert.equal(await formatText(input), input)
-})
-
 run('mask boundary fallback preserves prefixes, regions, comments and later tokens', async () => {
   const cases = [
+    { input: "%let x=%str('%');\n%put TAILMARKER;\n" },
     {
       input: "data x; a=1; %let x=%str('%'); b=2; run;\n%put TAIL;\n",
       expected: "data x;\n  a=1;\n%let x=%str('%'); b=2; run;\n%put TAIL;\n"
@@ -1001,40 +992,128 @@ run('an unterminated parmcards4 section keeps the program it carries', async () 
   assert.equal(await formatText(output), output)
 })
 
-run('keyword casing preserves the text inside masking arguments', async () => {
-  const input = '%let x=%nrstr(%put hello;);\n'
-  const output = await formatText(input, { keywordCase: 'upper' })
-  assert.equal(output, '%LET x=%NRSTR(%put hello;);\n')
+run('keyword casing preserves masked text and applies to surrounding code', async () => {
+  for (const [keywordCase, input, expected] of [
+    [
+      'upper',
+      '%let x=%nrstr(%put hello;);\n%put tail;\n',
+      '%LET x=%NRSTR(%put hello;);\n%PUT tail;\n'
+    ],
+    [
+      'lower',
+      '%LET x=%NRSTR(%PUT HELLO;);\n%PUT TAIL;\n',
+      '%let x=%nrstr(%PUT HELLO;);\n%put TAIL;\n'
+    ]
+  ]) {
+    const output = await formatText(input, { keywordCase })
+    assert.equal(output, expected)
+    assert.equal(await formatText(output, { keywordCase }), output)
+  }
 })
 
-run('keyword casing still applies around ordinary masks and mask text in comments', async () => {
+run('keyword casing handles ordinary masks, comments and cards data', async () => {
   for (const suffix of ['%let x=%str(&a);', '%put %str(a,b);', '/* %str(a,b) */']) {
-    const input = `data x;run;\n${suffix}\n`
-    const output = await formatText(input, { keywordCase: 'upper' })
+    const output = await formatText(`data x;run;\n${suffix}\n`, { keywordCase: 'upper' })
     assert.ok(output.startsWith('DATA x;\nRUN;\n'), output)
   }
+  for (const keywordCase of ['upper', 'lower']) {
+    const source = keywordCase === 'upper' ? '%let' : '%LET'
+    const expected = keywordCase === 'upper' ? '%LET' : '%let'
+    for (const fragment of ['%str(&a)', '%str(a,b)', '/* %str(a,b) */']) {
+      const input = `${source} x=${fragment};\n${source} y=1;\n`
+      const output = await formatText(input, { keywordCase })
+      assert.ok(output.startsWith(expected), JSON.stringify(output))
+      assert.ok(output.includes(`${expected} y=1;`), JSON.stringify(output))
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+    const records = keywordCase === 'upper' ? 'run;\ndata test;' : 'RUN;\nDATA TEST;'
+    const cards = await formatText(`data x; input x $; datalines;\n${records}\n;\nrun;\n`, {
+      keywordCase
+    })
+    assert.ok(cards.includes(`\n${records}\n;\n`), JSON.stringify(cards))
+  }
+  const input = '%let x = %str(ordinary);\n%put tail;\n'
+  for (const [keywordCase, expected] of [
+    ['preserve', '%let x=%str(ordinary);\n%put tail;\n'],
+    ['upper', '%LET x=%STR(ordinary);\n%PUT tail;\n'],
+    ['lower', '%let x=%str(ordinary);\n%put tail;\n']
+  ])
+    assert.equal(await formatText(input, { keywordCase }), expected)
 })
 
-run('mask fallback does not uppercase literal data in the preserved suffix', async () => {
-  const input = "%let x=%str('%');\ndata a; x='begin; proc print; end'; run;\n"
-  const output = await formatText(input, { keywordCase: 'upper' })
-  assert.ok(output.includes("x='begin; proc print; end'"), output)
-})
-
-run('a masking argument at end of an incomplete statement is not lost', async () => {
-  for (const input of ["%put %str('%')", "%put %nrstr(a; %str('%'); b)"]) {
-    const output = await formatText(input)
-    assert.equal(output, input + '\n')
-    assert.equal(await formatText(output), output)
+run('quote functions preserve arguments and case code outside', async () => {
+  for (const name of ['str', 'nrstr', 'quote', 'nrquote', 'bquote', 'nrbquote', 'superq']) {
+    const argument = '%put hello;'
+    const source = `%let x=%${name}(${argument});\n%put tail;\n`
+    for (const keywordCase of ['upper', 'lower']) {
+      const output = await formatText(source, { keywordCase })
+      assert.ok(output.includes(`(${argument})`), JSON.stringify([name, output]))
+      assert.ok(output.includes(keywordCase === 'upper' ? '%PUT tail;' : '%put tail;'))
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
   }
 })
 
-run('matched quotes containing a percent sign do not delete the rest of the program', async () => {
-  const input = "%let x=%str('%');\n%put TAILMARKER;\n"
-  const output = await formatText(input)
-  assert.equal(output, input)
-  assert.equal(await formatText(output), output)
+run('masked quote and parenthesis tokens remain unchanged', async () => {
+  for (const name of ['str', 'nrstr', 'quote', 'nrquote']) {
+    const argument = `%put hello; %" %' %(`
+    const source = `%let x=%${name}(${argument});\n%put tail;\n`
+    const output = await formatText(source, { keywordCase: 'upper' })
+    assert.ok(output.includes(`(${argument})`), JSON.stringify(output))
+    assert.ok(output.includes('%PUT tail;'))
+  }
 })
+
+run('nested multiline masks preserve arguments and resume casing afterwards', async () => {
+  for (const eol of ['\n', '\r\n']) {
+    for (const keywordCase of ['upper', 'lower']) {
+      const argument = `abc %str(%put inner;)${eol} %put next; /* ) */ %' x`
+      const source = `%let x=%nrstr(${argument});${eol}%put tail;${eol}`
+      const output = await formatText(source, { keywordCase })
+      assert.ok(output.includes(argument), JSON.stringify(output))
+      assert.ok(output.includes(keywordCase === 'upper' ? '%PUT tail;' : '%put tail;'))
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
+
+run('unsafe masks preserve later literals and case only the safe prefix', async () => {
+  for (const keywordCase of ['preserve', 'upper', 'lower']) {
+    for (const literal of ["'begin; proc print; end'", "'BEGIN; PROC PRINT; END'"]) {
+      const prefix = keywordCase === 'lower' ? '%LET' : '%let'
+      const wanted = keywordCase === 'upper' ? '%LET' : '%let'
+      const suffix = `%let x=%str('%');\ndata a; x=${literal}; run;\n`
+      const output = await formatText(`${prefix} before=1;\n${suffix}`, { keywordCase })
+      assert.equal(output, `${keywordCase === 'preserve' ? prefix : wanted} before=1;\n${suffix}`)
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+  }
+})
+
+run('masking arguments at EOF survive every keyword case', async () => {
+  for (const keywordCase of ['preserve', 'upper', 'lower']) {
+    for (const input of ["%put %str('%')", "%put %nrstr(a; %str('%'); b)"]) {
+      const output = await formatText(input, { keywordCase })
+      assert.equal(output, input + '\n')
+      assert.equal(await formatText(output, { keywordCase }), output)
+    }
+    for (const input of [
+      '%let x=%nrstr(foo\n%put TAIL;\n\n\n',
+      "%let x=%str('%');\n%put %nrstr(a;\n\n"
+    ]) {
+      assert.equal(await formatText(input, { keywordCase }), input)
+    }
+  }
+})
+
+run(
+  'casing handles a flat AST with 140000 statements',
+  async () => {
+    const input = '%put hello;\n'.repeat(140000)
+    assert.equal(await formatText(input, { keywordCase: 'upper' }), '%PUT hello;\n'.repeat(140000))
+  },
+  { timeout: 120000 }
+)
 
 run('a comment within a masking argument does not delete preceding text', async () => {
   const input = '%let x=%str(a; /* c */ b);\n'

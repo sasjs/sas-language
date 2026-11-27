@@ -43,8 +43,8 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
   // would use. Parser fallback spans cannot be mapped from the original text:
   // formatting can move their start. Case only the prefix when that parser
   // detects an unterminated mask or a token crossing its scanned boundary.
-  const tokens: unknown[] = []
-  syntaxProvider.setTokenCallback((token) => tokens.push(token))
+  const lexedTokens: unknown[] = []
+  syntaxProvider.setTokenCallback((token) => lexedTokens.push(token))
   const lastLine = model.getLineCount() - 1
   syntaxProvider.add({
     text: '',
@@ -61,7 +61,7 @@ export const applyKeywordCase = (text: string, keywordCase: 'upper' | 'lower') =
   const raw: Array<{ start: Position; end: Position }> = []
   const ast = getParser(
     model,
-    tokens,
+    lexedTokens,
     syntaxProvider,
     (start) => {
       unsafe = start
